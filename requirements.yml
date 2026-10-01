@@ -1,0 +1,22 @@
+---
+# requirements.yml — зависимости для использования роли cobbler
+#
+# Использование:
+#   ansible-galaxy install -r requirements.yml
+#
+# Установит:
+#   1. Роль cobbler из Git-репозитория kprklg/ansible-cobbler
+#   2. Коллекцию community.docker (для docker_compose_v2 и т.д.)
+
+roles:
+  # Наша роль cobbler из GitHub
+  - src: https://github.com/kprklg/ansible-cobbler
+    scm: git
+    version: main              # или конкретный тег, например v1.0.0
+    name: cobbler              # имя директории в roles/
+
+collections:
+  # Коллекция для работы с Docker
+  - name: community.docker
+    source: https://galaxy.ansible.com
+    # version: 6.0.0           # можно зафиксировать версию
