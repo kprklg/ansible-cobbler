@@ -1,0 +1,115 @@
+---
+# uninstall.yml — полное удаление стека Cobbler
+
+- name: Удаление Cobbler
+  hosts: cobbler
+  become: yes
+  gather_facts: no
+
+  tasks:
+    - name: "Остановка и удаление контейнеров"
+      community.docker.docker_compose:
+        project_src: "{{ cobbler_workdir }}"
+        state: absent
+      ignore_errors: yes
+
+    - name: "Удаление Docker volumes"
+      ansible.builtin.command: "docker volume rm {{ cobbler_workdir | basename }}_{{ item }}"
+      with_items:
+        - cobbler-etc
+        - cobbler-var-lib
+        - cobbler-webdir
+        - cobbler-tftproot
+        - cobbler-dhcp-config
+        - cobbler-dns-config
+        - cobbler-dns-zones
+      failed_when: false
+      changed_when: false
+
+    - name: "Удаление Docker network cobbler-pxe"
+      ansible.builtin.command: docker network rm cobbler-pxe
+      failed_when: false
+      changed_when: false
+
+    - name: "Удаление Docker образов"
+      ansible.builtin.command: "docker image rm {{ item }}"
+      with_items:
+        - cobbler/cobblerd-patched:latest
+        - cobbler/cobbler-web-patched:latest
+        - cobbler/cobbler-dns-patched:latest
+      failed_when: false
+      changed_when: false
+
+    - name: "Удаление systemd сервиса"
+      ansible.builtin.systemd:
+        name: "{{ cobbler_systemd_service_name }}.service"
+        enabled: no
+        state: stopped
+      failed_when: false
+
+    - name: "Удаление systemd-юнита"
+      ansible.builtin.file:
+        path: "/etc/systemd/system/{{ cobbler_systemd_service_name }}.service"
+        state: absent
+
+    - name: "daemon-reload"
+      ansible.builtin.systemd:
+        daemon_reload: yes
+
+    - name: "Удаление macvlan (systemd-networkd)"
+      ansible.builtin.file:
+        path: "/etc/systemd/network/20-{{ cobbler_pxe_iface }}-host.{{ item }}"
+        state: absent
+      with_items:
+        - netdev
+        - network
+
+    - name: "Удаление eth0 auto-up"
+      ansible.builtin.file:
+        path: "/etc/systemd/network/10-{{ cobbler_pxe_iface }}.{{ item }}"
+        state: absent
+      with_items:
+        - link
+        - network
+
+    - name: "Удаление рабочей директории"
+      ansible.builtin.file:
+        path: "{{ cobbler_workdir }}"
+        state: absent
+
+    - name: "Отключение ip_forward (опционально)"
+      ansible.posix.sysctl:
+        name: net.ipv4.ip_forward
+        value: "0"
+        state: present
+        reload: yes
+      when: false  # по умолчанию не отключаем
+
+    - name: "Удаление NAT правил"
+      ansible.builtin.iptables:
+        table: nat
+        chain: POSTROUTING
+        source: "{{ cobbler_pxe_network }}"
+        out_interface: "{{ cobbler_wifi_iface }}"
+        jump: MASQUERADE
+        state: absent
+
+    - name: "Удаление qemu-user-static (опционально)"
+      ansible.builtin.apt:
+        name:
+          - qemu-user-static
+          - qemu-user-binfmt
+        state: absent
+      when: false  # по умолчанию не удаляем (может быть нужен другим)
+
+    - name: "Cobbler удалён"
+      ansible.builtin.debug:
+        msg:
+          - "════════════════════════════════════════"
+          - "✓ Cobbler удалён"
+          - "════════════════════════════════════════"
+          - "Осталось (если хотите удалить полностью):"
+          - "  - Пакеты: apt autoremove"
+          - "  - Изображения: docker image prune -a"
+          - "  - Сеть: docker network prune"
+          - "════════════════════════════════════════"

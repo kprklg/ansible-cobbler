@@ -1,0 +1,35 @@
+---
+# tasks/images.yml — сборка patched-образов
+
+- name: "Сборка cobbler-patched (ядро)"
+  community.docker.docker_image:
+    name: cobbler/cobblerd-patched
+    tag: latest
+    build:
+      path: "{{ cobbler_workdir }}/patches/cobbler"
+      platform: linux/amd64
+    source: build
+    force_source: "{{ cobbler_rebuild_images }}"
+  when: not cobbler_skip_builds
+
+- name: "Сборка cobbler-web-patched"
+  community.docker.docker_image:
+    name: cobbler/cobbler-web-patched
+    tag: latest
+    build:
+      path: "{{ cobbler_workdir }}/patches/cobbler-web"
+      platform: linux/amd64
+    source: build
+    force_source: "{{ cobbler_rebuild_images }}"
+  when: not cobbler_skip_builds
+
+- name: "Сборка cobbler-dns-patched"
+  community.docker.docker_image:
+    name: cobbler/cobbler-dns-patched
+    tag: latest
+    build:
+      path: "{{ cobbler_workdir }}/patches/cobbler-dns"
+      platform: linux/amd64
+    source: build
+    force_source: "{{ cobbler_rebuild_images }}"
+  when: not cobbler_skip_builds

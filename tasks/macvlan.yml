@@ -1,0 +1,58 @@
+---
+# tasks/macvlan.yml — persistent macvlan через systemd-networkd
+
+- name: "Включение systemd-networkd"
+  ansible.builtin.systemd:
+    name: systemd-networkd
+    enabled: yes
+    state: started
+
+- name: "Конфиг eth0 (link metadata)"
+  ansible.builtin.copy:
+    dest: "/etc/systemd/network/10-{{ cobbler_pxe_iface }}.link"
+    content: |
+      [Match]
+      OriginalName={{ cobbler_pxe_iface }}
+
+      [Link]
+      RequiredForOnline=no
+
+- name: "Конфиг eth0 (auto-up без IP)"
+  ansible.builtin.copy:
+    dest: "/etc/systemd/network/10-{{ cobbler_pxe_iface }}.network"
+    content: |
+      [Match]
+      Name={{ cobbler_pxe_iface }}
+
+      [Network]
+      IPv6AcceptRA=no
+
+- name: "Конфиг macvlan.netdev"
+  ansible.builtin.copy:
+    dest: "/etc/systemd/network/20-{{ cobbler_pxe_iface }}-host.netdev"
+    content: |
+      [NetDev]
+      Name={{ cobbler_pxe_iface }}-host
+      Kind=macvlan
+
+      [MACVLAN]
+      Mode=bridge
+
+- name: "Конфиг macvlan.network"
+  ansible.builtin.copy:
+    dest: "/etc/systemd/network/20-{{ cobbler_pxe_iface }}-host.network"
+    content: |
+      [Match]
+      Name={{ cobbler_pxe_iface }}-host
+
+      [Network]
+      Address={{ cobbler_pxe_ip }}
+      ConfigureWithoutCarrier={{ cobbler_macvlan_configure_without_carrier | string | lower }}
+
+- name: "Включение IP forwarding"
+  ansible.posix.sysctl:
+    name: net.ipv4.ip_forward
+    value: "1"
+    sysctl_set: yes
+    state: present
+    reload: yes

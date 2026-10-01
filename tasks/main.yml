@@ -1,0 +1,61 @@
+---
+# tasks/main.yml — главный файл задач роли
+# Разбит на named blocks через include_tasks для лучшей читаемости
+
+- name: "Cobbler: Предусловия"
+  include_tasks: preflight.yml
+  tags:
+    - preflight
+    - always
+
+- name: "Cobbler: Установка системных зависимостей"
+  include_tasks: dependencies.yml
+  tags:
+    - dependencies
+
+- name: "Cobbler: Persistent macvlan"
+  include_tasks: macvlan.yml
+  tags:
+    - network
+    - macvlan
+
+- name: "Cobbler: NAT MASQUERADE"
+  include_tasks: nat.yml
+  tags:
+    - network
+    - nat
+
+- name: "Cobbler: Генерация compose.yml и Dockerfile'ов"
+  include_tasks: compose.yml
+  tags:
+    - compose
+    - build
+
+- name: "Cobbler: Извлечение webroot"
+  include_tasks: webroot.yml
+  tags:
+    - webroot
+
+- name: "Cobbler: Сборка patched-образов"
+  include_tasks: images.yml
+  tags:
+    - build
+    - images
+
+- name: "Cobbler: Создание volumes и дефолтных конфигов"
+  include_tasks: volumes.yml
+  tags:
+    - volumes
+    - config
+
+- name: "Cobbler: Запуск Docker-стека"
+  include_tasks: stack.yml
+  tags:
+    - stack
+    - deploy
+
+- name: "Cobbler: Systemd-сервис автозапуска"
+  include_tasks: systemd.yml
+  tags:
+    - systemd
+    - autostart

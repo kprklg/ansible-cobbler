@@ -1,0 +1,39 @@
+---
+# meta/main.yml — метаданные роли
+galaxy_info:
+  role_name: cobbler
+  author: MiniMax-M3 (rasp01 team)
+  description: >
+    Установка PXE-провижининг сервера Cobbler 4.x на Debian-хостах.
+    Полностью автономная — все артефакты (compose.yml, Dockerfile'ы, патчи, webroot)
+    генерируются playbook'ом из upstream-образов (ghcr.io/cobbler/*).
+    Поддерживает aarch64 (Raspberry Pi с эмуляцией qemu) и x86_64 (нативно).
+    Не требует бэкапов или предварительно подготовленных файлов.
+  license: MIT
+  min_ansible_version: "2.14"
+
+  platforms:
+    - name: Debian
+      versions:
+        - bookworm
+        - trixie
+    - name: Ubuntu
+      versions:
+        - jammy      # 22.04 LTS
+        - noble      # 24.04 LTS
+
+  galaxy_tags:
+    - cobbler
+    - pxe
+    - provisioning
+    - raspberry_pi
+    - arm64
+    - amd64
+    - docker
+    - qemu
+
+  dependencies:
+    - role: geerlingguy.docker
+      vars:
+        docker_install_compose: true
+        docker_users: ["{{ ansible_user }}"]

@@ -1,0 +1,13 @@
+# cobbler/cobbler-web-patched
+# Patched image: disable port_in_redirect в nginx
+#
+# nginx-unprivileged (по умолчанию) делает абсолютные редиректы с портом 8080,
+# но он не опубликован → ERR_CONNECTION_REFUSED в браузере.
+# Этот патч добавляет port_in_redirect off.
+
+FROM ghcr.io/cobbler/cobbler-web:v1.2.0
+
+USER root
+
+COPY patch-nginx.sh /docker-entrypoint.d/99-patch-nginx-port-in-redirect.sh
+RUN chmod +x /docker-entrypoint.d/99-patch-nginx-port-in-redirect.sh

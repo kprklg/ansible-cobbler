@@ -1,0 +1,65 @@
+---
+# tasks/stack.yml — запуск Docker-стека
+
+- name: "Создать docker-сеть cobbler-pxe (external)"
+  community.docker.docker_network:
+    name: cobbler-pxe
+    driver: macvlan
+    driver_options:
+      parent: "{{ cobbler_pxe_iface }}-host"
+    ipam_options:
+      subnet: "{{ cobbler_pxe_network }}"
+      gateway: "{{ cobbler_pxe_ip | ipaddr('address') }}"
+      iprange: "{{ cobbler_pxe_network | ipaddr('network') }}.128/25"
+    state: present
+
+- name: "docker compose up -d (запуск всего стека)"
+  community.docker.docker_compose:
+    project_src: "{{ cobbler_workdir }}"
+    state: present
+    pull: no
+    build: no
+
+- name: "Ожидание готовности cobblerd (порт 25151)"
+  ansible.builtin.shell: |
+    for i in $(seq 1 60); do
+      docker exec {{ cobbler_workdir | basename }}-cobblerd-1 python3 -c "
+    import socket; s=socket.socket(); s.settimeout(3); s.connect(('127.0.0.1', 25151)); s.close()
+    " 2>/dev/null && exit 0
+      sleep 3
+    done
+    exit 1
+  register: cobblerd_ready
+  changed_when: false
+  failed_when: false
+
+- name: "Ожидание готовности Web UI"
+  ansible.builtin.uri:
+    url: "http://127.0.0.1/"
+    status_code: 200,302
+    timeout: 5
+  register: web_ui_check
+  until: web_ui_check.status in [200, 302]
+  retries: 60
+  delay: 3
+
+- name: "Ожидание готовности /cobbler_api (XML-RPC)"
+  ansible.builtin.uri:
+    url: "http://127.0.0.1/cobbler_api"
+    method: POST
+    headers:
+      Content-Type: "text/xml"
+    body_format: raw
+    body: '<?xml version="1.0"?><methodCall><methodName>ping</methodName></methodCall>'
+    status_code: 200,501,502,503,504  # 501 = cobbler не поддерживает GET/POST ping
+    timeout: 5
+  register: api_check
+  until: api_check.status in [200, 501]
+  retries: 30
+  delay: 3
+  failed_when: false
+
+- name: "Удалить старые 07-compose-* контейнеры (если остались)"
+  ansible.builtin.shell: "docker ps -a --filter name='07-compose-' --format '{{.ID}}' | xargs -r docker rm -f"
+  changed_when: false
+  failed_when: false

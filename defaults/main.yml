@@ -1,0 +1,91 @@
+---
+# defaults/main.yml — переменные по умолчанию для роли cobbler
+# Могут быть переопределены через inventory, -e, group_vars, host_vars
+
+# === Архитектура ===
+# Список поддерживаемых архитектур
+cobbler_supported_archs:
+  - "aarch64"   # Raspberry Pi 3/4/5 (ARM 64-bit)
+  - "x86_64"    # Обычные серверы (Intel/AMD)
+
+# Режим эмуляции:
+# - "always"   — ставить qemu всегда (по умолчанию для arm)
+# - "auto"     — ставить qemu только если архитектура != amd64
+# - "never"    — не ставить qemu (для amd64)
+cobbler_qemu_emulation: "auto"
+
+# === Сеть ===
+# Интерфейсы
+cobbler_pxe_iface: "eth0"           # физический интерфейс для PXE
+cobbler_wifi_iface: "wlan0"         # интерфейс для NAT в интернет
+
+# PXE-подсеть
+cobbler_pxe_network: "10.254.254.0/24"
+cobbler_pxe_ip: "10.254.254.1/24"   # IP macvlan-интерфейса
+cobbler_mgmt_ip: ""                  # IP для Web UI (если пусто - берётся ansible_host)
+
+# === Рабочая директория ===
+cobbler_workdir: "/opt/cobbler-stack"
+
+# === Аккаунт по умолчанию ===
+cobbler_default_user: "cobbler"
+cobbler_default_password: "cobbler"
+
+# === Docker-образы ===
+cobbler_web_image_version: "v1.2.0"
+cobbler_dhcp_image: "ghcr.io/cobbler/cobbler-dhcp:latest"
+cobbler_dns_image: "ghcr.io/cobbler/cobbler-dns:latest"
+cobbler_tftp_image: "ghcr.io/cobbler/cobbler-tftp:latest"
+cobbler_web_image: "ghcr.io/cobbler/cobbler-web:{{ cobbler_web_image_version }}"
+cobbler_traefik_image: "traefik:v3.6"
+
+# Patched образы (собираются локально)
+cobbler_patched_images:
+  - name: "cobbler/cobblerd-patched"
+    src: "patches/cobbler"
+    base: "ghcr.io/cobbler/cobblerd:latest"
+  - name: "cobbler/cobbler-web-patched"
+    src: "patches/cobbler-web"
+    base: "{{ cobbler_web_image }}"
+  - name: "cobbler/cobbler-dns-patched"
+    src: "patches/cobbler-dns"
+    base: "{{ cobbler_dns_image }}"
+
+# === Поведение ===
+cobbler_rebuild_images: false        # пересобирать образы даже если они есть
+cobbler_skip_builds: false           # вообще не билдить (использовать кэш)
+cobbler_skip_webroot: false          # не извлекать webroot из upstream
+
+# === Systemd ===
+cobbler_systemd_service_name: "cobbler-recover"
+cobbler_systemd_timeout: 300         # секунд на восстановление
+
+# === Таймауты healthcheck (используется в patched образах) ===
+# В qemu эмуляции на RPi healthcheck cobblerd не успевает за стандартные 5 сек,
+# поэтому он отключён в compose
+cobbler_healthcheck_disabled: true
+
+# === Настройки macvlan (systemd-networkd) ===
+cobbler_macvlan_configure_without_carrier: true   # работает даже без кабеля
+
+# === Traefik ===
+cobbler_traefik_dashboard_port: 8082  # для отладки
+
+# === PXE-сервисы IP-адреса (внутри cobbler-pxe сети) ===
+# cobbler-tftp: 10.254.254.4
+# cobbler-dhcp: 10.254.254.2 (обычно первый)
+# cobbler-dns:  10.254.254.3
+cobbler_tftp_ip_offset: 4
+cobbler_dhcp_ip_offset: 2
+cobbler_dns_ip_offset: 3
+
+# === Container management-сеть (docker bridge) ===
+# Внутренняя сеть между контейнерами cobbler (НЕ PXE).
+# PXE-клиенты её не видят — она только для docker-compose.
+# cobbler-tftp IP: cobbler_mgmt_network + offset (по умолчанию .20)
+# cobbler-dhcp IP: ... + offset (по умолчанию .21)
+# cobbler-dns  IP: ... + offset (по умолчанию .22)
+cobbler_mgmt_network: "10.17.0.0/16"
+cobbler_tftp_mgmt_ip_offset: 20
+cobbler_dhcp_mgmt_ip_offset: 21
+cobbler_dns_mgmt_ip_offset: 22

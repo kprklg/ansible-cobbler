@@ -1,0 +1,11 @@
+---
+# group_vars/all.yml для staging
+
+cobbler_mgmt_ip: "192.168.1.100"
+cobbler_pxe_network: "192.168.1.0/24"
+cobbler_pxe_ip: "192.168.1.1/24"
+cobbler_skip_builds: true   # на staging не пересобирать
+cobbler_rebuild_images: false
+
+# Тестовый пароль
+cobbler_default_password: "staging-pass"

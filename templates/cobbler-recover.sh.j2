@@ -1,0 +1,130 @@
+#!/usr/bin/env bash
+# cobbler-recover.sh
+# Восстановление стека Cobbler после рестарта хоста.
+#
+# Что делает:
+#   1. Включает IP forwarding
+#   2. Включает promisc на {{ pxe_iface }}
+#   3. Создаёт macvlan (если systemd-networkd не сделал)
+#   4. Добавляет NAT MASQUERADE
+#   5. Ждёт Docker daemon
+#   6. Создаёт docker-сеть cobbler-pxe (если пропала)
+#   7. Запускает cobblerd (ядро), затем по одному dhcp/dns/tftp
+#      чтобы не убить OOM на RPi 1GB
+#   8. Запускает остальные сервисы
+#   9. Ждёт готовности Web UI
+
+set -u
+
+COMPOSE_DIR="{{ cobbler_workdir }}"
+PXE_IFACE="{{ pxe_iface }}"
+WIFI_IFACE="{{ wifi_iface }}"
+PXE_IP="{{ pxe_ip }}"
+PXE_NETWORK="{{ pxe_network }}"
+PXE_HOST_IFACE="${PXE_IFACE}-host"
+
+log() { echo "[$(date +%H:%M:%S)] $*" >&2; }
+
+# 1. IP forwarding
+if [ "$(cat /proc/sys/net/ipv4/ip_forward)" != "1" ]; then
+  log "Включаю ip_forward"
+  echo 1 > /proc/sys/net/ipv4/ip_forward
+fi
+
+# 2. Promisc на родительском интерфейсе
+if [ "$(cat /proc/sys/net/ipv4/conf/$PXE_IFACE/promisc 2>/dev/null)" != "1" ]; then
+  log "Включаю promiscuous на $PXE_IFACE"
+  ip link set "$PXE_IFACE" promisc on
+fi
+
+# 3. macvlan (если systemd-networkd не сделал)
+if ! ip link show "$PXE_HOST_IFACE" >/dev/null 2>&1; then
+  log "Создаю macvlan $PXE_HOST_IFACE поверх $PXE_IFACE"
+  ip addr flush dev "$PXE_IFACE" 2>/dev/null || true
+  ip link add link "$PXE_IFACE" name "$PXE_HOST_IFACE" type macvlan mode bridge
+  ip link set "$PXE_HOST_IFACE" up
+  ip addr add "$PXE_IP" dev "$PXE_HOST_IFACE"
+fi
+
+# 4. NAT (MASQUERADE) для PXE-клиентов
+if ! iptables -t nat -C POSTROUTING -s "$PXE_NETWORK" -o "$WIFI_IFACE" -j MASQUERADE 2>/dev/null; then
+  log "Добавляю NAT MASQUERADE"
+  iptables -t nat -A POSTROUTING -s "$PXE_NETWORK" -o "$WIFI_IFACE" -j MASQUERADE
+fi
+
+# 5. Ждём Docker
+log "Жду docker daemon"
+for i in $(seq 1 60); do
+  if docker info >/dev/null 2>&1; then
+    log "  ✓ docker ready"
+    break
+  fi
+  sleep 1
+done
+
+# 6. Docker-сеть cobbler-pxe
+if ! docker network inspect cobbler-pxe >/dev/null 2>&1; then
+  log "Создаю cobbler-pxe"
+  docker network create -d macvlan \
+    --subnet="$PXE_NETWORK" \
+    --gateway="${PXE_IP%/*}" \
+    --ip-range="${PXE_NETWORK%.*}.128/25" \
+    -o parent="$PXE_HOST_IFACE" \
+    cobbler-pxe || log "  WARN: не удалось создать cobbler-pxe"
+fi
+
+# 7. Запускаем cobblerd (ядро cobbler)
+log "Запускаю cobblerd (ядро)"
+cd "$COMPOSE_DIR"
+docker compose up -d --force-recreate cobblerd
+# Ждём пока cobblerd ответит (через qemu это 30-90 сек)
+for i in $(seq 1 60); do
+  if docker exec $(basename "$COMPOSE_DIR")-cobblerd-1 python3 -c "
+import socket; s=socket.socket(); s.settimeout(2); s.connect(('127.0.0.1', 25151)); s.close()
+" 2>/dev/null; then
+    log "  ✓ cobblerd ready"
+    break
+  fi
+  sleep 2
+done
+
+# 8. Запускаем остальные core-сервисы
+log "Запускаю http-api, web, traefik"
+docker compose up -d --force-recreate http-api web traefik
+sleep 10
+
+# 9. Запускаем PXE-сервисы ПО ОДНОМУ (избегаем OOM на RPi 1GB)
+for svc in cobbler-dns cobbler-dhcp cobbler-tftp; do
+  log "Запускаю $svc"
+  docker compose up -d --force-recreate "$svc" 2>&1 | tail -3
+  # Пауза между запусками чтобы не нагружать RAM
+  sleep 10
+done
+
+# 10. Ожидание готовности Web UI (через traefik)
+log "Жду готовность Web UI"
+for i in $(seq 1 60); do
+  HTTP=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1/ 2>/dev/null || echo "000")
+  if [ "$HTTP" = "200" ] || [ "$HTTP" = "302" ]; then
+    log "  ✓ Web UI готов (HTTP $HTTP)"
+    break
+  fi
+  sleep 2
+done
+
+# 11. Проверка /cobbler_api (XML-RPC)
+log "Жду готовность /cobbler_api (XML-RPC)"
+for i in $(seq 1 30); do
+  HTTP=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 -X POST \
+    -H "Content-Type: text/xml" \
+    -d '<?xml version="1.0"?><methodCall><methodName>ping</methodName></methodCall>' \
+    http://127.0.0.1/cobbler_api 2>/dev/null || echo "000")
+  if [ "$HTTP" = "200" ]; then
+    log "  ✓ XML-RPC работает"
+    break
+  fi
+  sleep 2
+done
+
+log "Восстановление завершено"
+exit 0

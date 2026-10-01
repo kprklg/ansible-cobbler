@@ -1,0 +1,14 @@
+#!/bin/sh
+# cobbler-dns entrypoint: named in foreground with stdout logging
+set -eu
+
+# Create directories named expects
+mkdir -p /var/cache/bind /var/cache/bind/data /var/lib/named/data /etc/named.d
+chmod 0777 /var/cache/bind /var/cache/bind/data /var/lib/named /var/lib/named/data
+chmod -R u+rwX,g+rwX,o+rwX /var/lib/named /etc/cobbler-dns /var/cache/bind 2>/dev/null || true
+
+[ -f /etc/named.d/forwarders.conf ] || touch /etc/named.d/forwarders.conf
+chmod 0666 /etc/named.d/forwarders.conf
+
+echo "[entrypoint] starting named in foreground mode with stdout logging"
+exec named -f -L /dev/stdout -c /etc/named.conf

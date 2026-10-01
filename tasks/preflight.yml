@@ -1,0 +1,41 @@
+---
+# tasks/preflight.yml — проверка предусловий
+
+- name: "Проверка поддерживаемой архитектуры"
+  ansible.builtin.assert:
+    that: "ansible_architecture in {{ cobbler_supported_archs }}"
+    fail_msg: |
+      Роль cobbler поддерживает архитектуры: {{ cobbler_supported_archs | join(', ') }}.
+      У вас: {{ ansible_architecture }}.
+      Поддерживаемые: {{ cobbler_supported_archs | join(', ') }}
+
+- name: "Определение MGMT_IP (если не задан)"
+  ansible.builtin.set_fact:
+    cobbler_mgmt_ip: "{{ cobbler_mgmt_ip | default(ansible_host) }}"
+
+- name: "Информация о хосте"
+  ansible.builtin.debug:
+    msg:
+      - "════════════════════════════════════════"
+      - "Установка Cobbler на {{ ansible_hostname }}"
+      - "════════════════════════════════════════"
+      - "Архитектура:   {{ ansible_architecture }}"
+      - "Web UI IP:     {{ cobbler_mgmt_ip }}"
+      - "PXE-сеть:      {{ cobbler_pxe_network }}"
+      - "PXE-IP хоста:  {{ cobbler_pxe_ip }}"
+      - "Интерфейсы:    {{ cobbler_pxe_iface }} (PXE), {{ cobbler_wifi_iface }} (NAT)"
+      - "Workdir:       {{ cobbler_workdir }}"
+      - "════════════════════════════════════════"
+
+- name: "Проверка что Docker установлен"
+  ansible.builtin.command: docker --version
+  register: docker_check
+  changed_when: false
+  failed_when: docker_check.rc != 0
+  changed_when: false
+
+- name: "Проверка что docker compose доступен"
+  ansible.builtin.command: docker compose version
+  register: compose_check
+  changed_when: false
+  failed_when: compose_check.rc != 0

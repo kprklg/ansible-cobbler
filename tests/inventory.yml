@@ -1,0 +1,20 @@
+---
+# Test inventory для molecule/ansible-test
+
+all:
+  children:
+    test:
+      hosts:
+        rasp01:
+          ansible_host: localhost
+          ansible_connection: local
+          ansible_user: root
+          ansible_become: yes
+
+          # Тестовые переменные
+          cobbler_mgmt_ip: "192.168.1.100"
+          cobbler_pxe_iface: "eth0"
+          cobbler_wifi_iface: "wlan0"
+          cobbler_pxe_network: "192.168.1.0/24"
+          cobbler_pxe_ip: "192.168.1.1/24"
+          cobbler_skip_builds: true   # не пересобирать образы в тестах

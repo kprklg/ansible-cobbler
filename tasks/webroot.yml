@@ -1,0 +1,53 @@
+---
+# tasks/webroot.yml — извлечение webroot из upstream-образа
+
+- name: "Создать временный контейнер с cobbler-web:{{ cobbler_web_image_version }}"
+  ansible.builtin.command: "docker create --name cobbler-web-tmp {{ cobbler_web_image }}"
+  register: tmp_container
+  failed_when: false  # может уже существовать
+
+- name: "Извлечь webroot из upstream-образа"
+  ansible.builtin.command: docker cp cobbler-web-tmp:/usr/share/nginx/html "{{ cobbler_workdir }}/webroot"
+  register: extract_webroot
+  notify: cleanup cobbler-web-tmp
+
+- name: "Сгенерировать app-config.json (root)"
+  ansible.builtin.copy:
+    dest: "{{ cobbler_workdir }}/webroot/app-config.json"
+    content: |
+      {"cobblerUrls": ["http://{{ cobbler_mgmt_ip }}/cobbler_api"]}
+
+- name: "Сгенерировать app-config.json (en-US)"
+  ansible.builtin.copy:
+    dest: "{{ cobbler_workdir }}/webroot/en-US/assets/configs/app-config.json"
+    content: |
+      {"cobblerUrls": ["http://{{ cobbler_mgmt_ip }}/cobbler_api"]}
+
+- name: "Сгенерировать app-config.json (de)"
+  ansible.builtin.copy:
+    dest: "{{ cobbler_workdir }}/webroot/de/assets/configs/app-config.json"
+    content: |
+      {"cobblerUrls": ["http://{{ cobbler_mgmt_ip }}/cobbler_api"]}
+
+- name: "Перезаписать root index.html (без перезаписи localStorage)"
+  ansible.builtin.copy:
+    dest: "{{ cobbler_workdir }}/webroot/index.html"
+    content: |
+      <!doctype html>
+      <html lang="en" dir="ltr">
+      <head>
+        <meta charset="utf-8">
+        <title>Cobbler</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <style>html,body{height:100%;margin:0;display:flex;align-items:center;justify-content:center;font-family:Roboto,"Helvetica Neue",sans-serif;background:#faf9fd;color:#1a1b1f}.loader{text-align:center}.loader h1{font-weight:300;font-size:1.5rem;margin:0 0 1rem 0}.loader p{color:#666}</style>
+      </head>
+      <body>
+        <div class="loader"><h1>Cobbler</h1><p>Loading...</p></div>
+        <script>
+          var lang = (navigator.language || navigator.userLanguage || "en").toLowerCase();
+          var target = "/en-US/";
+          if (lang.indexOf("de") === 0) target = "/de/";
+          window.location.replace(target);
+        </script>
+      </body>
+      </html>

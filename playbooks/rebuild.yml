@@ -1,0 +1,23 @@
+---
+# rebuild.yml — пересобрать patched-образы (после изменения патчей)
+
+- name: Пересборка patched-образов
+  hosts: cobbler
+  become: yes
+  gather_facts: yes
+
+  roles:
+    - role: cobbler
+      tasks_from: images
+
+  post_tasks:
+    - name: "Перезапуск cobblerd (новый образ)"
+      community.docker.docker_compose:
+        project_src: "{{ cobbler_workdir }}"
+        state: present
+        restarted: yes
+      ignore_errors: yes
+
+    - name: "Готово"
+      ansible.builtin.debug:
+        msg: "✓ Patched-образы пересобраны и cobblerd перезапущен"

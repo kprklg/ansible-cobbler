@@ -1,0 +1,21 @@
+---
+# group_vars/all.yml — переменные для всех хостов в production
+# (вызывается автоматически Ansible при обработке inventory/production)
+
+# === Сеть ===
+cobbler_mgmt_ip: "192.168.0.88"
+cobbler_pxe_iface: "eth0"
+cobbler_wifi_iface: "wlan0"
+cobbler_pxe_network: "10.254.254.0/24"
+cobbler_pxe_ip: "10.254.254.1/24"
+
+# === Учётные данные ===
+cobbler_default_user: "cobbler"
+cobbler_default_password: "cobbler"
+
+# === Поведение ===
+# Пересобирать образы принудительно (default: false)
+# cobbler_rebuild_images: true
+
+# Пропустить build (использовать кэш) — для CI/CD
+# cobbler_skip_builds: true

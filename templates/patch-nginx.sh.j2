@@ -1,0 +1,12 @@
+#!/bin/sh
+# Patch nginx config: port_in_redirect off
+# Upstream nginx-unprivileged по умолчанию включает port_in_redirect=on,
+# что приводит к абсолютным редиректам с портом 8080 (не опубликован).
+
+NGINX_CONF="/etc/nginx/conf.d/default.conf"
+if [ -f "$NGINX_CONF" ]; then
+  if ! grep -q "port_in_redirect off" "$NGINX_CONF"; then
+    sed -i '/server {/a\    port_in_redirect off;' "$NGINX_CONF"
+    echo "[patch-nginx] port_in_redirect off applied to $NGINX_CONF"
+  fi
+fi

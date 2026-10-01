@@ -1,0 +1,68 @@
+---
+# tasks/compose.yml — генерация compose.yml и Dockerfile'ов из шаблонов
+
+- name: "Создание рабочей директории {{ cobbler_workdir }}"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  with_items:
+    - "{{ cobbler_workdir }}"
+    - "{{ cobbler_workdir }}/patches/cobbler"
+    - "{{ cobbler_workdir }}/patches/cobbler-web"
+    - "{{ cobbler_workdir }}/patches/cobbler-dns"
+    - "{{ cobbler_workdir }}/distro-sources"
+
+- name: "Генерация compose.yml"
+  ansible.builtin.template:
+    src: compose.yml.j2
+    dest: "{{ cobbler_workdir }}/compose.yml"
+    mode: "0644"
+
+- name: "Генерация Dockerfile для cobbler-patched"
+  ansible.builtin.template:
+    src: Dockerfile.cobbler.j2
+    dest: "{{ cobbler_workdir }}/patches/cobbler/Dockerfile"
+    mode: "0644"
+
+- name: "Генерация patch-remote.py (cobbler)"
+  ansible.builtin.template:
+    src: patch-remote.py.j2
+    dest: "{{ cobbler_workdir }}/patches/cobbler/patch-remote.py"
+    mode: "0755"
+
+- name: "Генерация patch-manager.py (cobbler)"
+  ansible.builtin.template:
+    src: patch-manager.py.j2
+    dest: "{{ cobbler_workdir }}/patches/cobbler/patch-manager.py"
+    mode: "0755"
+
+- name: "Генерация Dockerfile для cobbler-web-patched"
+  ansible.builtin.template:
+    src: Dockerfile.cobbler-web.j2
+    dest: "{{ cobbler_workdir }}/patches/cobbler-web/Dockerfile"
+    mode: "0644"
+
+- name: "Генерация patch-nginx.sh (cobbler-web)"
+  ansible.builtin.template:
+    src: patch-nginx.sh.j2
+    dest: "{{ cobbler_workdir }}/patches/cobbler-web/patch-nginx.sh"
+    mode: "0755"
+
+- name: "Генерация Dockerfile для cobbler-dns-patched"
+  ansible.builtin.template:
+    src: Dockerfile.cobbler-dns.j2
+    dest: "{{ cobbler_workdir }}/patches/cobbler-dns/Dockerfile"
+    mode: "0644"
+
+- name: "Генерация entrypoint.sh (cobbler-dns)"
+  ansible.builtin.template:
+    src: entrypoint.sh.j2
+    dest: "{{ cobbler_workdir }}/patches/cobbler-dns/entrypoint.sh"
+    mode: "0755"
+
+- name: "Генерация named.conf (reference)"
+  ansible.builtin.template:
+    src: named.conf.j2
+    dest: "{{ cobbler_workdir }}/named.conf"
+    mode: "0644"

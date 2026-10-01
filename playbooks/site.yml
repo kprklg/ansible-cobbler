@@ -1,0 +1,33 @@
+---
+# site.yml — полная установка Cobbler (использует роль cobbler)
+#
+# Использование:
+#   ansible-playbook playbooks/site.yml                    # полная установка
+#   ansible-playbook playbooks/site.yml --tags network     # только сеть
+#   ansible-playbook playbooks/site.yml --tags stack       # только docker compose
+#   ansible-playbook playbooks/site.yml -e "cobbler_skip_builds=true"
+
+- name: Установка Cobbler на Raspberry Pi
+  hosts: cobbler
+  become: yes
+  gather_facts: yes
+
+  roles:
+    - role: cobbler
+
+  post_tasks:
+    - name: "Финальный отчёт"
+      ansible.builtin.debug:
+        msg:
+          - "════════════════════════════════════════"
+          - "✓ Cobbler установлен и работает"
+          - "════════════════════════════════════════"
+          - ""
+          - "Web UI:    http://{{ cobbler_mgmt_ip }}/"
+          - "Логин:     {{ cobbler_default_user }} / {{ cobbler_default_password }}"
+          - "XML-RPC:   http://{{ cobbler_mgmt_ip }}/cobbler_api"
+          - ""
+          - "Следующие шаги:"
+          - "1. Импортировать дистрибутив (ISO)"
+          - "2. Воткнуть Ethernet-кабель в {{ cobbler_pxe_iface }}"
+          - "════════════════════════════════════════"

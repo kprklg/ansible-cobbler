@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""Patch cobbler/cobbler_collections/manager.py: add legacy aliases.
+
+cobbler 4 removed aliases for legacy collection names (file, snippet,
+mgmtclass, settings, package) but cobbler-web v1.x still calls them.
+"""
+import sys
+import os
+
+MANAGER_PY = "/usr/lib/python3.13/site-packages/cobbler/cobbler_collections/manager.py"
+
+LEGACY_ALIASES = """
+    # === Legacy aliases for cobbler-web v1.x compatibility ===
+    @property
+    def file(self):
+        return self.files
+    @property
+    def snippet(self):
+        return self.snippets
+    @property
+    def mgmtclass(self):
+        return self.mgmtclasses
+    @property
+    def settings(self):
+        return self._settings
+    @property
+    def package(self):
+        return self.packages
+"""
+
+if not os.path.exists(MANAGER_PY):
+    print(f"ERROR: {MANAGER_PY} not found", file=sys.stderr)
+    sys.exit(1)
+
+with open(MANAGER_PY) as f:
+    content = f.read()
+
+if "def file(self):" in content and "Legacy aliases" in content:
+    print("manager.py: already patched, skipping")
+    sys.exit(0)
+
+# Вставляем перед class CollectionManager:
+if "class CollectionManager" in content:
+    content = content.replace(
+        "class CollectionManager",
+        LEGACY_ALIASES + "\nclass CollectionManager"
+    )
+
+with open(MANAGER_PY, "w") as f:
+    f.write(content)
+
+print("manager.py patched (added legacy collection aliases)")

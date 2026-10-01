@@ -1,0 +1,14 @@
+# cobbler-dns-patched
+# Custom entrypoint: named в foreground + iproute2 (если нужен)
+#
+# Upstream entrypoint запускает named в daemon mode (-f) с логами в syslog —
+# silent failures. Запускаем в foreground с -L /dev/stdout.
+
+FROM ghcr.io/cobbler/cobbler-dns:latest
+
+USER root
+
+COPY entrypoint.sh /usr/local/bin/cobbler-dns-entrypoint.sh
+RUN chmod +x /usr/local/bin/cobbler-dns-entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/cobbler-dns-entrypoint.sh"]

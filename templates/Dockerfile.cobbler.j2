@@ -1,0 +1,19 @@
+# cobbler/cobblerd-patched
+# Patched image с legacy collection aliases для совместимости с cobbler-web 1.x
+#
+# Restore methods and aliases removed during cobbler 3 -> 4 migration
+# but still called by cobbler-web v1.x:
+#   - cobbler/remote.py: get_autoinstall_templates, get_autoinstall_snippets
+#   - cobbler/cobbler_collections/manager.py: aliases for legacy collection names
+
+FROM ghcr.io/cobbler/cobblerd:latest
+
+USER root
+
+COPY patch-remote.py /tmp/patch-remote.py
+COPY patch-manager.py /tmp/patch-manager.py
+
+RUN python3 /tmp/patch-remote.py \
+ && python3 /tmp/patch-manager.py \
+ && find /usr/lib/python3.13/site-packages/cobbler -name '__pycache__' -type d -exec rm -rf {} + \
+ && rm -f /tmp/patch-remote.py /tmp/patch-manager.py

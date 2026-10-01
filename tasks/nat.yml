@@ -1,0 +1,15 @@
+---
+# tasks/nat.yml — NAT MASQUERADE для PXE-клиентов
+
+- name: "Правило MASQUERADE для PXE-подсети"
+  ansible.builtin.iptables:
+    table: nat
+    chain: POSTROUTING
+    source: "{{ cobbler_pxe_network }}"
+    out_interface: "{{ cobbler_wifi_iface }}"
+    jump: MASQUERADE
+    comment: "Cobbler PXE NAT"
+
+- name: "Сохранение iptables правил"
+  ansible.builtin.command: netfilter-persistent save
+  changed_when: false

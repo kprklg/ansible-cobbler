@@ -1,0 +1,34 @@
+---
+# tasks/systemd.yml — установка systemd-сервиса автозапуска
+
+- name: "Генерация cobbler-recover.sh"
+  ansible.builtin.template:
+    src: cobbler-recover.sh.j2
+    dest: "{{ cobbler_workdir }}/cobbler-recover.sh"
+    mode: "0755"
+
+- name: "Создание systemd-юнита {{ cobbler_systemd_service_name }}.service"
+  ansible.builtin.copy:
+    dest: "/etc/systemd/system/{{ cobbler_systemd_service_name }}.service"
+    content: |
+      [Unit]
+      Description=Cobbler stack autostart (universal playbook)
+      After=network-online.target docker.service
+      Wants=network-online.target
+      Requires=docker.service
+
+      [Service]
+      Type=oneshot
+      RemainAfterExit=yes
+      ExecStart={{ cobbler_workdir }}/cobbler-recover.sh
+      WorkingDirectory={{ cobbler_workdir }}
+      TimeoutStartSec={{ cobbler_systemd_timeout }}
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: "daemon-reload + enable {{ cobbler_systemd_service_name }}"
+  ansible.builtin.systemd:
+    name: "{{ cobbler_systemd_service_name }}.service"
+    enabled: yes
+    daemon_reload: yes

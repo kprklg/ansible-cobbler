@@ -1,0 +1,59 @@
+---
+# tasks/dependencies.yml — установка системных пакетов
+
+# Определяем, нужен ли qemu для эмуляции x86_64
+- name: "Определить необходимость qemu-эмуляции"
+  ansible.builtin.set_fact:
+    cobbler_needs_qemu: "{{ cobbler_qemu_emulation == 'always' or
+                             (cobbler_qemu_emulation == 'auto' and ansible_architecture != 'x86_64') }}"
+
+- name: "Установка базовых пакетов (без qemu)"
+  ansible.builtin.apt:
+    name:
+      - docker.io
+      - iptables-persistent
+      - netfilter-persistent
+      - python3
+      - python3-yaml
+      - rsync
+    state: present
+    update_cache: yes
+    cache_valid_time: 3600
+  when: not cobbler_needs_qemu
+
+- name: "Установка пакетов с qemu-user-static (для ARM эмуляции x86_64)"
+  ansible.builtin.apt:
+    name:
+      - docker.io
+      - qemu-user-static
+      - qemu-user-binfmt
+      - iptables-persistent
+      - netfilter-persistent
+      - python3
+      - python3-yaml
+      - rsync
+    state: present
+    update_cache: yes
+    cache_valid_time: 3600
+  when: cobbler_needs_qemu
+
+- name: "Регистрация binfmt для qemu-x86_64 (ARM хоста)"
+  ansible.builtin.shell: |
+    if ! ls /proc/sys/fs/binfmt_misc/ 2>/dev/null | grep -q qemu-x86_64; then
+      docker run --privileged --rm tonistiigi/binfmt --install all
+      echo "INSTALLED"
+    else
+      echo "ALREADY"
+    fi
+  register: binfmt_register
+  changed_when: "'INSTALLED' in binfmt_register.stdout"
+  when: cobbler_needs_qemu
+
+- name: "Тест эмуляции amd64 (только если используется qemu)"
+  ansible.builtin.command: docker run --rm --platform linux/amd64 alpine:3.20 uname -m
+  register: emulation_test
+  changed_when: false
+  failed_when: emulation_test.stdout != "x86_64"
+  when: cobbler_needs_qemu
+  tags:
+    - test

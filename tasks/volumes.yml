@@ -1,0 +1,227 @@
+---
+# tasks/volumes.yml — создание volumes с дефолтными конфигами (идемпотентно)
+
+# Проверяем существование volumes (idempotent)
+- name: "Получить список существующих volumes"
+  ansible.builtin.command: docker volume ls --format '{{.Name}}'
+  register: existing_volumes
+  changed_when: false
+  check_mode: false
+
+- name: "Создать Docker volumes (только отсутствующие)"
+  ansible.builtin.command: "docker volume create {{ cobbler_workdir | basename }}_{{ item }}"
+  with_items:
+    - cobbler-etc
+    - cobbler-var-lib
+    - cobbler-webdir
+    - cobbler-tftproot
+    - cobbler-dhcp-config
+    - cobbler-dns-config
+    - cobbler-dns-zones
+  when: "item not in existing_volumes.stdout_lines | map('regex_replace', '.*_', '') | list"
+  changed_when: true
+
+# === settings.yaml ===
+- name: "Создать /tmp/cobbler-settings.yaml (для копирования в volume)"
+  ansible.builtin.copy:
+    dest: "/tmp/cobbler-settings.yaml"
+    content: |
+      tftpboot_location: "/srv/tftpboot"
+      webdir: "/srv/www/cobbler"
+      manage_tftpd: false
+      bind_zonefile_path: "/var/lib/named"
+
+      modules:
+        authentication:
+          module: "authentication.configfile"
+          hash_algorithm: "sha3_512"
+        authorization:
+          module: "authorization.allowall"
+        dns:
+          module: "managers.bind"
+        dhcp:
+          module: "managers.isc"
+        httpd:
+          module: "managers.dynamic_httpd"
+        tftpd:
+          module: "managers.dynamic_tftp"
+        process_management:
+          module: "auto"
+          docker_socket_path: "/var/run/docker.sock"
+          docker_service_labels:
+            dhcpd: "dhcp"
+            dhcpd4: "dhcp"
+            dhcpd6: "dhcp"
+            named: "dns"
+            dnsmasq: "dnsmasq"
+        serializers:
+          module: "serializers.file"
+    mode: "0644"
+
+- name: "Проверить наличие settings.yaml в volume"
+  ansible.builtin.command: docker run --rm --platform linux/amd64
+    -v {{ cobbler_workdir | basename }}_cobbler-etc:/data
+    --entrypoint ls alpine:latest /data/settings.yaml
+  register: check_settings
+  changed_when: false
+  failed_when: false
+
+- name: "Скопировать settings.yaml в volume (если отсутствует)"
+  ansible.builtin.command: >
+    docker run --rm --platform linux/amd64
+    -v {{ cobbler_workdir | basename }}_cobbler-etc:/data
+    -v /tmp:/backup:ro
+    --entrypoint sh alpine:latest
+    -c "cp /backup/cobbler-settings.yaml /data/settings.yaml && chmod 640 /data/settings.yaml"
+  when: check_settings.rc != 0
+  changed_when: check_settings.rc != 0
+
+# === users.conf, users.digest, auth.conf ===
+# Генерируем users.digest через python crypt один раз (на control машине)
+- name: "Сгенерировать users.digest для пароля {{ cobbler_default_password }} (one-time)"
+  ansible.builtin.shell: |
+    python3 -c "
+    import crypt
+    salt = '\$1\$cobbler\$'
+    hash_val = crypt.crypt('{{ cobbler_default_password }}', salt)
+    print(f'cobbler:Cobbler:{hash_val}')
+    " > /tmp/cobbler-users.digest
+    ls -la /tmp/cobbler-users.digest
+  register: users_digest_gen
+  changed_when: "not ansible_check_mode and users_digest_gen.stdout_lines | length > 0"
+  args:
+    creates: /tmp/cobbler-users.digest
+
+- name: "Создать /tmp/cobbler-users.conf"
+  ansible.builtin.copy:
+    dest: "/tmp/cobbler-users.conf"
+    content: |
+      [admins]
+      admins = "cobbler"
+    mode: "0644"
+
+- name: "Создать /tmp/cobbler-auth.conf"
+  ansible.builtin.copy:
+    dest: "/tmp/cobbler-auth.conf"
+    content: |
+      [module]
+      module = authz.configfile
+    mode: "0644"
+
+- name: "Проверить наличие users.conf в volume"
+  ansible.builtin.command: docker run --rm --platform linux/amd64
+    -v {{ cobbler_workdir | basename }}_cobbler-etc:/data
+    --entrypoint ls alpine:latest /data/users.conf
+  register: check_users_conf
+  changed_when: false
+  failed_when: false
+
+- name: "Скопировать users.conf, users.digest, auth.conf в volume (если отсутствуют)"
+  ansible.builtin.command: >
+    docker run --rm --platform linux/amd64
+    -v {{ cobbler_workdir | basename }}_cobbler-etc:/data
+    -v /tmp:/backup:ro
+    --entrypoint sh alpine:latest
+    -c "cp /backup/cobbler-users.conf /data/users.conf && cp /backup/cobbler-users.digest /data/users.digest && cp /backup/cobbler-auth.conf /data/auth.conf && chmod 640 /data/users.conf /data/users.digest"
+  when: check_users_conf.rc != 0
+  changed_when: check_users_conf.rc != 0
+
+# === dhcpd.conf ===
+- name: "Создать /tmp/cobbler-dhcpd.conf"
+  ansible.builtin.copy:
+    dest: "/tmp/cobbler-dhcpd.conf"
+    content: |
+      # Cobbler-managed DHCP
+      ddns-update-style interim;
+      allow booting;
+      allow bootp;
+      subnet {{ cobbler_pxe_network | ipaddr('network') }} netmask {{ cobbler_pxe_network | ipaddr('netmask') }} {
+        range {{ cobbler_pxe_network | ipaddr('network') | ipaddr('+100') }} {{ cobbler_pxe_network | ipaddr('network') | ipaddr('+200') }};
+        option routers {{ cobbler_pxe_ip | ipaddr('address') }};
+        option domain-name-servers {{ cobbler_pxe_ip | ipaddr('address') | regex_replace('\\d+$', cobbler_dns_ip_offset | string) }};
+        option subnet-mask {{ cobbler_pxe_network | ipaddr('netmask') }};
+        filename "pxelinux.0";
+        next-server {{ cobbler_pxe_ip | ipaddr('address') }};
+      }
+    mode: "0644"
+
+- name: "Проверить наличие dhcpd.conf в volume"
+  ansible.builtin.command: docker run --rm --platform linux/amd64
+    -v {{ cobbler_workdir | basename }}_cobbler-dhcp-config:/data
+    --entrypoint ls alpine:latest /data/dhcpd.conf
+  register: check_dhcpd
+  changed_when: false
+  failed_when: false
+
+- name: "Скопировать dhcpd.conf в volume (если отсутствует)"
+  ansible.builtin.command: >
+    docker run --rm --platform linux/amd64
+    -v {{ cobbler_workdir | basename }}_cobbler-dhcp-config:/data
+    -v /tmp:/backup:ro
+    --entrypoint sh alpine:latest
+    -c "cp /backup/cobbler-dhcpd.conf /data/dhcpd.conf"
+  when: check_dhcpd.rc != 0
+  changed_when: check_dhcpd.rc != 0
+
+# === named.conf ===
+- name: "Создать /tmp/cobbler-named.conf"
+  ansible.builtin.copy:
+    dest: "/tmp/cobbler-named.conf"
+    content: |
+      acl "pxe-network" { {{ cobbler_pxe_network }}; 127.0.0.1; {{ cobbler_mgmt_network }}; };
+      options {
+        directory "/var/lib/named";
+        listen-on { any; };
+        listen-on-v6 { none; };
+        allow-query { any; };
+        recursion yes;
+        forwarders { 1.1.1.1; 8.8.8.8; };
+      };
+      zone "." { type hint; file "named.ca"; };
+    mode: "0644"
+
+- name: "Проверить наличие named.conf в volume"
+  ansible.builtin.command: docker run --rm --platform linux/amd64
+    -v {{ cobbler_workdir | basename }}_cobbler-dns-config:/data
+    --entrypoint ls alpine:latest /data/named.conf
+  register: check_named
+  changed_when: false
+  failed_when: false
+
+- name: "Скопировать named.conf в volume (если отсутствует)"
+  ansible.builtin.command: >
+    docker run --rm --platform linux/amd64
+    -v {{ cobbler_workdir | basename }}_cobbler-dns-config:/data
+    -v /tmp:/backup:ro
+    --entrypoint sh alpine:latest
+    -c "cp /backup/cobbler-named.conf /data/named.conf"
+  when: check_named.rc != 0
+  changed_when: check_named.rc != 0
+
+# === named.ca (root hints) ===
+- name: "Создать /tmp/named.ca (root DNS hints)"
+  ansible.builtin.copy:
+    dest: "/tmp/cobbler-named.ca"
+    content: |
+      .                       3600000  NS    A.ROOT-SERVERS.NET.
+      A.ROOT-SERVERS.NET.     3600000  A     198.41.0.4
+      A.ROOT-SERVERS.NET.     3600000  AAAA  2001:503:ba3e::2:30
+    mode: "0644"
+
+- name: "Проверить наличие named.ca в volume"
+  ansible.builtin.command: docker run --rm --platform linux/amd64
+    -v {{ cobbler_workdir | basename }}_cobbler-dns-zones:/data
+    --entrypoint ls alpine:latest /data/named.ca
+  register: check_named_ca
+  changed_when: false
+  failed_when: false
+
+- name: "Скопировать named.ca в DNS volume (если отсутствует)"
+  ansible.builtin.command: >
+    docker run --rm --platform linux/amd64
+    -v {{ cobbler_workdir | basename }}_cobbler-dns-zones:/data
+    -v /tmp:/backup:ro
+    --entrypoint sh alpine:latest
+    -c "cp /backup/cobbler-named.ca /data/named.ca && chmod 644 /data/named.ca"
+  when: check_named_ca.rc != 0
+  changed_when: check_named_ca.rc != 0

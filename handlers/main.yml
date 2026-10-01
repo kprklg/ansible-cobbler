@@ -1,0 +1,7 @@
+---
+# handlers/main.yml — handlers для роли cobbler
+
+- name: cleanup cobbler-web-tmp
+  ansible.builtin.command: docker rm cobbler-web-tmp
+  failed_when: false
+  changed_when: false

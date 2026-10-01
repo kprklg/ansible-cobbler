@@ -1,0 +1,24 @@
+---
+# Test playbook для роли cobbler
+# Запуск: ansible-playbook -i inventory.yml test.yml
+
+- name: Test cobbler role
+  hosts: test
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: Include role
+      include_role:
+        name: cobbler
+        tasks_from: preflight
+
+    - name: Verify cobbler_mgmt_ip is set
+      assert:
+        that: cobbler_mgmt_ip is defined
+        fail_msg: "cobbler_mgmt_ip not defined"
+
+    - name: Verify cobbler_pxe_network is valid CIDR
+      assert:
+        that: cobbler_pxe_network | ansible.utils.ipaddr('network') is defined
+        fail_msg: "Invalid PXE network CIDR"
