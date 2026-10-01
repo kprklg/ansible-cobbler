@@ -14,7 +14,7 @@
     state: present
 
 - name: "docker compose up -d (запуск всего стека)"
-  community.docker.docker_compose:
+  community.docker.docker_compose_v2:
     project_src: "{{ cobbler_workdir }}"
     state: present
     pull: no

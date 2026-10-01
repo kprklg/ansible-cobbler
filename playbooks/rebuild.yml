@@ -12,7 +12,7 @@
 
   post_tasks:
     - name: "Перезапуск cobblerd (новый образ)"
-      community.docker.docker_compose:
+      community.docker.docker_compose_v2:
         project_src: "{{ cobbler_workdir }}"
         state: present
         restarted: yes
