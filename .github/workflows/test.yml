@@ -52,7 +52,7 @@ jobs:
       - name: Run yamllint
         run: |
           pip install yamllint
-          yamllint -d "{rules: {line-length: {max: 200}, truthy: {allowed-values: ['true', 'false', 'yes', 'no']}}}" .
+          yamllint .
 
   meta:
     name: Role structure

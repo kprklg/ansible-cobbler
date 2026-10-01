@@ -32,7 +32,6 @@
   register: docker_check
   changed_when: false
   failed_when: docker_check.rc != 0
-  changed_when: false
 
 - name: "Проверка что docker compose доступен"
   ansible.builtin.command: docker compose version
