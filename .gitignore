@@ -1,0 +1,15 @@
+# Вспомогательные файлы
+push-to-github.sh
+
+# Python
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Ansible
+*.retry
+.ansible/
