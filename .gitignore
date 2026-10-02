@@ -1,15 +1,16 @@
-# Вспомогательные файлы
-push-to-github.sh
 
-# Python
-__pycache__/
-*.pyc
-
-# IDE
-.vscode/
-.idea/
-*.swp
-
-# Ansible
-*.retry
 .ansible/
+# Ansible
+filter_plugins/
+# IDE
+.idea/
+inventories/local/
+*.log
+push-to-github.sh
+*.pyc
+__pycache__/
+# Python
+*.retry
+*.swp
+.vscode/
+# Вспомогательные файлы
