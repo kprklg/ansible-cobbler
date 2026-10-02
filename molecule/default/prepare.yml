@@ -1,0 +1,61 @@
+---
+# molecule/default/prepare.yml
+# Подготовка хоста перед converge.
+
+- name: Prepare
+  hosts: all
+  become: true
+  gather_facts: false
+  tasks:
+    - name: "Установить базовые пакеты"
+      ansible.builtin.apt:
+        name:
+          - ca-certificates
+          - curl
+          - gnupg
+          - python3
+          - python3-yaml
+          - python3-passlib
+          - qemu-user-static
+          - binfmt-support
+          - iptables-persistent
+        update_cache: true
+        state: present
+
+    - name: "Preseed iptables-persistent"
+      ansible.builtin.debconf:
+        name: iptables-persistent
+        question: "{{ item }}"
+        vtype: boolean
+        value: "true"
+      loop:
+        - iptables-persistent/autosave_v4
+        - iptables-persistent/autosave_v6
+
+    - name: "Создать фейковый docker для проверки"
+      ansible.builtin.copy:
+        content: |
+          #!/bin/sh
+          # Fake docker для molecule pre-flight
+          if [ "$1" = "--version" ]; then echo "Docker version 99.0.0"; exit 0; fi
+          if [ "$1" = "compose" ] && [ "$2" = "version" ]; then echo "Docker Compose version v99.0"; exit 0; fi
+          echo "fake docker"
+          exit 0
+        dest: /usr/local/bin/docker
+        mode: "0755"
+
+    - name: "Создать фейковый compose"
+      ansible.builtin.copy:
+        content: |
+          #!/bin/sh
+          echo "docker compose v2 (fake)"
+          exit 0
+        dest: /usr/local/bin/docker-compose
+        mode: "0755"
+
+    - name: "Symlink compose в PATH"
+      ansible.builtin.file:
+        src: /usr/local/bin/docker-compose
+        dest: /usr/bin/docker-compose
+        state: link
+        force: true

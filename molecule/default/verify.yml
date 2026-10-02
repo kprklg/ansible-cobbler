@@ -1,0 +1,31 @@
+---
+# molecule/default/verify.yml
+# Проверки после converge.
+
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: "Что etcd/iptables-правила для NAT существуют"
+      ansible.builtin.command: iptables -t nat -L POSTROUTING -n
+      register: nat_rules
+      changed_when: false
+      failed_when: "'MASQUERADE' not in nat_rules.stdout"
+
+    - name: "Что IP forwarding включён"
+      ansible.builtin.command: cat /proc/sys/net/ipv4/ip_forward
+      register: ip_forward
+      changed_when: false
+      failed_when: ip_forward.stdout != "1"
+
+    - name: "Что /etc/systemd/network/20-eth0.10.netdev создан"
+      ansible.builtin.stat:
+        path: /etc/systemd/network/20-eth0.10.netdev
+      register: netdev
+      failed_when: not netdev.stat.exists
+
+    - name: "Что /etc/systemd/network/20-eth0.10.network создан"
+      ansible.builtin.stat:
+        path: /etc/systemd/network/20-eth0.10.network
+      register: network
+      failed_when: not network.stat.exists

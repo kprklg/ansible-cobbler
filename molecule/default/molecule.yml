@@ -1,0 +1,91 @@
+---
+# molecule/default/molecule.yml
+# Базовый Molecule-сценарий: проверяет что роль компилируется и
+# может выполнить preflight + dependencies на чистом Docker-контейнере.
+#
+# Использование:
+#   pip install molecule molecule-plugins[docker] docker
+#   make molecule
+
+dependency:
+  name: galaxy
+
+driver:
+  name: docker
+
+  platforms:
+    # x86_64 — нативный запуск
+    - name: cobbler-test-x86_64
+      image: debian:13-slim
+      privileged: true
+      command: /lib/systemd/systemd
+      pre_build_image: false
+      volumes:
+        - /sys/fs/cgroup:/sys/fs/cgroup:rw
+      dockerfile: |
+        FROM debian:13-slim
+        ENV DEBIAN_FRONTEND=noninteractive
+        RUN apt-get update && \
+            apt-get install -y --no-install-recommends \
+                systemd systemd-sysv dbus \
+                python3 sudo iproute2 \
+                iptables iptables-persistent \
+            && \
+            apt-get clean && \
+            rm -rf /var/lib/apt/lists/* && \
+            systemctl mask systemd-tmpfiles-setup.service
+
+    # aarch64 — с qemu-эмуляцией (на хосте должен быть binfmt)
+    - name: cobbler-test-aarch64
+      image: debian:13-slim
+      privileged: true
+      command: /lib/systemd/systemd
+      pre_build_image: false
+      platform: linux/arm64/v8
+      dockerfile: |
+        FROM debian:13-slim
+        ENV DEBIAN_FRONTEND=noninteractive
+        RUN apt-get update && \
+            apt-get install -y --no-install-recommends \
+                systemd systemd-sysv dbus \
+                python3 sudo iproute2 \
+                iptables iptables-persistent \
+                qemu-user-static binfmt-support \
+            && \
+            apt-get clean && \
+            rm -rf /var/lib/apt/lists/* && \
+            update-binfmts --display qemu-x86_64 || true && \
+            systemctl mask systemd-tmpfiles-setup.service
+
+provisioner:
+  name: ansible
+  inventory:
+    group_vars:
+      all:
+        cobbler_mgmt_ip: "192.168.0.88"
+        cobbler_pxe_iface: "eth0"
+        cobbler_wifi_iface: "eth0"
+        cobbler_pxe_network: "10.254.254.0/24"
+        cobbler_pxe_ip: "10.254.254.1/24"
+        cobbler_default_user: "cobbler"
+        cobbler_default_password: "cobbler"
+
+verifier:
+  name: ansible
+
+  inventory:
+    group_vars:
+      all:
+        cobbler_mgmt_ip: "192.168.0.88"
+
+scenario:
+  name: default
+  test_sequence:
+    - dependency
+    - syntax
+    - create
+    - prepare
+    - converge
+    - idempotence
+    - verify
+    - destroy

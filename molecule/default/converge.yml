@@ -1,0 +1,45 @@
+---
+# molecule/default/converge.yml
+# Что прогоняем в molecule-сценарии.
+#
+# Используем --skip-tags чтобы не запускать реальный docker compose up
+# (для этого нужен docker-in-docker + режим CAP_SYS_ADMIN, а Molecule
+# обычно проверяет только идемпотентность и синтаксис).
+
+- name: Converge
+  hosts: all
+  become: true
+  tasks:
+    - name: "Apply cobbler role (до preflight + dependencies)"
+      ansible.builtin.include_role:
+        name: cobbler
+      vars:
+        cobbler_skip_builds: true
+        cobbler_skip_webroot: true
+        # Не запускаем реальный docker compose stack
+        cobbler_skip_stack: true
+      # Только фазы, которые не требуют docker daemon
+      tags:
+        - always
+
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: "Проверка что systemd-networkd настроен"
+      ansible.builtin.systemd:
+        name: systemd-networkd
+      register: networkd
+      failed_when: not networkd.status
+
+    - name: "Проверка что binfmt зарегистрирован для qemu-x86_64"
+      ansible.builtin.command: ls /proc/sys/fs/binfmt_misc/qemu-x86_64
+      register: binfmt_check
+      changed_when: false
+      failed_when: binfmt_check.rc != 0
+
+    - name: "Проверка что macvlan netdev создан"
+      ansible.builtin.command: ip link show eth0.10
+      register: macvlan_check
+      changed_when: false
+      failed_when: macvlan_check.rc != 0
