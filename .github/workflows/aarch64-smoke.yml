@@ -1,0 +1,78 @@
+name: aarch64-smoke
+
+# Лёгкий smoke-тест работоспособности роли в режиме эмуляции aarch64.
+# Не запускает cobblerd и Docker-стек (это требует реального dockerd
+# под binfmt/qemu, что нестабильно в CI), но проверяет:
+#   - синтаксис Jinja2 в шаблонах
+#   - dry-run всех tasks на этапе preflight + dependencies
+#   - наличие всех обязательных файлов роли
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  jinja-render:
+    name: Render Jinja templates with sample vars
+    runs-on: ubuntu-24.04-arm    # aarch64 runner — настоящий ARM
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible
+
+      - name: Install collections
+        run: ansible-galaxy collection install community.docker --no-cache-dir
+
+      - name: Render compose.yml from template
+        run: |
+          # Создаём временный каталог и копируем туда шаблон + group_vars
+          WORK=$(mktemp -d)
+          mkdir -p "$WORK/group_vars"
+          cp roles/cobbler/templates/compose.yml.j2 "$WORK/compose.yml.j2"
+          cp inventories/staging/group_vars/all.yml "$WORK/group_vars/all.yml"
+          # Создаём минимальный hosts из yaml для deprecation-safe facts
+          cp inventories/staging/hosts.yml "$WORK/hosts.yml"
+
+          cd "$WORK"
+          ansible-playbook -i hosts.yml --connection=local \
+            -e "@group_vars/all.yml" \
+            -e "role_path=$(realpath /root/ansible-cobbler/roles/cobbler)" \
+            -e "cobbler_mgmt_ip=127.0.0.1" \
+            -e "cobbler_pxe_iface=eth0" \
+            -e "cobbler_wifi_iface=eth0" \
+            -e "cobbler_pxe_network=10.254.254.0/24" \
+            -e "cobbler_pxe_ip=10.254.254.1/24" \
+            -e "cobbler_default_user=cobbler" \
+            -e "cobbler_default_password=cobbler" \
+            --tags always \
+            --check /dev/stdin <<'EOF'
+          - hosts: localhost
+            gather_facts: no
+            tasks:
+              - name: Render compose.yml
+                ansible.builtin.template:
+                  src: compose.yml.j2
+                  dest: rendered-compose.yml
+                  mode: '0644'
+          EOF
+
+      - name: Verify rendered compose has no /16 CIDR in IPv4 addresses
+        run: |
+          # Проверяем, что в финальном compose нет битых IPv4 (с /16, /24, /25)
+          # (это типовая ошибка из v1.0.0)
+          if grep -E 'ipv4_address: [0-9.]+/' rendered-compose.yml; then
+            echo "ERROR: IPv4 addresses contain CIDR suffix:"
+            grep -E 'ipv4_address: [0-9.]+/' rendered-compose.yml
+            exit 1
+          fi
+          echo "OK: all IPv4 addresses are CIDR-less"

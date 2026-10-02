@@ -1,0 +1,68 @@
+name: syntax-check
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  ansible-syntax:
+    name: ansible-playbook --syntax-check
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ansible-version:
+          - '2.14'
+          - '2.15'
+          - '2.16'
+          - '2.17'
+          - '2.18'
+          - '2.19'
+        playbook:
+          - playbooks/site.yml
+          - playbooks/deploy.yml
+          - playbooks/rebuild.yml
+          - playbooks/uninstall.yml
+        exclude:
+          # Ansible 2.14-2.16 на старых версиях community.docker могут
+          # не иметь поддержку ipam_config / pull: never.
+          # Эти комбинации пропускаем чтобы не шуметь.
+          - ansible-version: '2.14'
+            playbook: playbooks/site.yml
+          - ansible-version: '2.15'
+            playbook: playbooks/site.yml
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Ansible ${{ matrix.ansible-version }}
+        run: |
+          python3 -m pip install --break-system-packages \
+            "ansible-core==${{ matrix.ansible-version }}.*" \
+            "ansible==${{ matrix.ansible-version }}.*"
+
+      - name: Cache ansible collections
+        uses: actions/cache@v4
+        with:
+          path: |
+              ~/.ansible/collections
+              /usr/lib/python3/dist-packages/ansible_collections
+          key: ${{ runner.os }}-ansible-collections-${{ matrix.ansible-version }}
+          restore-keys: |
+            ${{ runner.os }}-ansible-collections-${{ matrix.ansible-version }}
+            ${{ runner.os }}-ansible-collections-
+
+      - name: Install community.docker collection
+        run: ansible-galaxy collection install community.docker --no-cache-dir
+
+      - name: Syntax check ${{ matrix.playbook }}
+        run: |
+          ansible-playbook ${{ matrix.playbook }} \
+            -i inventories/staging/hosts.yml \
+            --syntax-check

@@ -1,0 +1,47 @@
+name: release
+
+# Автоматически создаёт GitHub Release при пуше тега v*.*.*
+# Полезно в комбинации с git tag + git push.
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: write    # нужно для создания release
+
+jobs:
+  github-release:
+    name: GitHub Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Extract changelog for tag
+        id: changelog
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+
+          # Берём секцию из CHANGELOG.md между двумя "## [" строками
+          awk '/^## \[v'"${VERSION}"'\]/{flag=1; next} /^## \[/{flag=0} flag' \
+            CHANGELOG.md > changelog-section.md
+          if [ ! -s changelog-section.md ]; then
+            echo "WARN: no CHANGELOG section found for v${VERSION}, using generic body"
+            echo "Release v${VERSION}" > changelog-section.md
+          fi
+          echo "changelog<<EOF" >> "$GITHUB_OUTPUT"
+          cat changelog-section.md >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: v${{ steps.changelog.outputs.version }}
+          body: ${{ steps.changelog.outputs.changelog }}
+          draft: false
+          prerelease: ${{ contains(steps.changelog.outputs.version, '-') }}
+          generate_release_notes: true

@@ -1,0 +1,47 @@
+name: lint
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  yamllint:
+    name: yamllint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run yamllint
+        uses: pipeline-lint/scripts/action-yamllint@v1
+        with:
+          config_file: .yamllint
+          ignore_file: .yamllintignore
+          args: --strict .
+
+  ansible-lint:
+    name: ansible-lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Ansible + linter
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible
+          pip3 install --break-system-packages ansible-lint
+
+      - name: Install collections
+        run: ansible-galaxy collection install community.docker --no-cache-dir
+
+      - name: Run ansible-lint
+        run: |
+          ansible-lint --version
+          ansible-lint roles/cobbler/ playbooks/ inventories/
