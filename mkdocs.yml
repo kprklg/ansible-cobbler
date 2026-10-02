@@ -1,0 +1,84 @@
+---
+# mkdocs.yml — конфигурация для генерации сайта документации
+# https://www.mkdocs.org/
+
+site_name: Ansible Cobbler Role
+site_description: Ansible-роль для установки PXE-провижининг сервера Cobbler 4.x
+site_author: rasp01 team
+site_url: https://kprklg.github.io/ansible-cobbler/
+
+repo_name: kprklg/ansible-cobbler
+repo_url: https://github.com/kprklg/ansible-cobbler
+edit_uri: edit/main/docs/wiki/
+
+copyright: Copyright &copy; 2026 rasp01 team — MIT License
+
+theme:
+  name: material
+  palette:
+    - scheme: default
+      primary: cyan
+      accent: cyan
+      icon:
+        repo: fontawesome/brands/github
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+  icon:
+    repo: fontawesome/brands/github
+    logo: material/server-network
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+plugins:
+  - search:
+      lang: ru
+
+nav:
+  - Главная: index.md
+  - Установка:
+      - Подготовка хоста: installation/prerequisites.md
+      - Пошаговое руководство: installation/step-by-step.md
+      - Проверка работоспособности: installation/verify.md
+  - Конфигурация:
+      - Переменные роли: configuration/variables.md
+      - Сетевые настройки: configuration/networking.md
+      - Поддерживаемые архитектуры: configuration/architectures.md
+  - Архитектура:
+      - Общая картина: architecture/overview.md
+      - Docker-стек: architecture/docker-stack.md
+      - Persistent volumes: architecture/volumes.md
+  - Разработка:
+      - Локальное тестирование: development/local-testing.md
+      - Molecule-сценарии: development/molecule.md
+      - Conventional Commits: development/commits.md
+      - CI/CD: development/ci-cd.md
+  - Troubleshooting:
+      - Частые ошибки: troubleshooting/common.md
+      - Диагностика: troubleshooting/diagnostics.md
+  - FAQ: faq.md
+  - Changelog: changelog.md
+  - Безопасность: security.md
