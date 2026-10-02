@@ -2,6 +2,9 @@
 
 [![Version v1.1.0](https://img.shields.io/badge/version-v1.1.0-brightgreen)](../../releases/tag/v1.1.0)
 [![License MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+[![lint](https://github.com/kprklg/ansible-cobbler/actions/workflows/lint.yml/badge.svg)](../../actions/workflows/lint.yml)
+[![syntax-check](https://github.com/kprklg/ansible-cobbler/actions/workflows/syntax-check.yml/badge.svg)](../../actions/workflows/syntax-check.yml)
+[![aarch64-smoke](https://github.com/kprklg/ansible-cobbler/actions/workflows/aarch64-smoke.yml/badge.svg)](../../actions/workflows/aarch64-smoke.yml)
 
 > 📚 **Документация:** [README](README.md) (вы здесь) ·
 > [PREREQUISITES](PREREQUISITES.md) ·
@@ -155,6 +158,21 @@ ansible-playbook -i inventories/myhost/hosts.yml playbooks/site.yml
 |------|----------|------------------|---------------------------|
 | **aarch64** (RPi 3/4/5) | ✅ через qemu | устанавливается автоматически | ~5-10× медленнее |
 | **x86_64** (Intel/AMD) | ❌ не нужна | НЕ устанавливается | нативная |
+
+---
+
+## CI / автотесты
+
+Каждый push и PR в `main` запускает 4 workflow:
+
+| Workflow | Что проверяет |
+|---|---|
+| [`lint.yml`](../../actions/workflows/lint.yml) | `yamllint` (strict) + `ansible-lint` для роли, плейбуков и инвентарей |
+| [`syntax-check.yml`](../../actions/workflows/syntax-check.yml) | `ansible-playbook --syntax-check` для всех плейбуков на Ansible 2.14-2.19 |
+| [`aarch64-smoke.yml`](../../actions/workflows/aarch64-smoke.yml) | рендеринг Jinja-шаблонов на реальном ARM runner + проверка, что в финальном `compose.yml` нет IPv4-адресов с CIDR-маской |
+| [`release.yml`](../../actions/workflows/release.yml) | автоматическое создание GitHub Release при пуше тега `v*.*.*` (с changelog) |
+
+Включён **Dependabot** для GitHub Actions и Docker.
 
 ---
 
