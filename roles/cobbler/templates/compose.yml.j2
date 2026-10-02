@@ -116,7 +116,7 @@ services:
       - "--api.dashboard=true"
       - "--api.insecure=true"
     ports:
-      - "{{ mgmt_ip }}:80:80"
+      - "{{ cobbler_mgmt_ip }}:80:80"
       - "127.0.0.1:8082:8082"
     networks:
       - cobbler
@@ -134,9 +134,9 @@ services:
       COBBLER_XMLRPC_HOST: "cobblerd"
     networks:
       cobbler:
-        ipv4_address: {{ cobbler_mgmt_network | ipaddr('net') | ipaddr('+' ~ cobbler_tftp_mgmt_ip_offset ~ '') }}
+        ipv4_address: {{ cobbler_mgmt_network | ipaddr('net') | ipaddr('+' ~ cobbler_tftp_mgmt_ip_offset ~ '') | ipaddr('address') }}
       cobbler-pxe:
-        ipv4_address: {{ pxe_network | ipaddr('net') | ipaddr('+' ~ cobbler_tftp_ip_offset ~ '') }}
+        ipv4_address: {{ cobbler_pxe_network | ipaddr('net') | ipaddr('+' ~ cobbler_tftp_ip_offset ~ '') | ipaddr('address') }}
     depends_on:
       cobblerd:
         condition: service_started
@@ -149,9 +149,9 @@ services:
       - cobbler-dhcp-config:/etc/cobbler-dhcp:ro,z
     networks:
       cobbler:
-        ipv4_address: {{ cobbler_mgmt_network | ipaddr('net') | ipaddr('+' ~ cobbler_dhcp_mgmt_ip_offset ~ '') }}
+        ipv4_address: {{ cobbler_mgmt_network | ipaddr('net') | ipaddr('+' ~ cobbler_dhcp_mgmt_ip_offset ~ '') | ipaddr('address') }}
       cobbler-pxe:
-        ipv4_address: {{ pxe_network | ipaddr('net') | ipaddr('+' ~ cobbler_dhcp_ip_offset ~ '') }}
+        ipv4_address: {{ cobbler_pxe_network | ipaddr('net') | ipaddr('+' ~ cobbler_dhcp_ip_offset ~ '') | ipaddr('address') }}
     depends_on:
       cobblerd:
         condition: service_started
@@ -167,9 +167,9 @@ services:
       - cobbler-dns-zones:/var/lib/named:z
     networks:
       cobbler:
-        ipv4_address: {{ cobbler_mgmt_network | ipaddr('net') | ipaddr('+' ~ cobbler_dns_mgmt_ip_offset ~ '') }}
+        ipv4_address: {{ cobbler_mgmt_network | ipaddr('net') | ipaddr('+' ~ cobbler_dns_mgmt_ip_offset ~ '') | ipaddr('address') }}
       cobbler-pxe:
-        ipv4_address: {{ pxe_network | ipaddr('net') | ipaddr('+' ~ cobbler_dns_ip_offset ~ '') }}
+        ipv4_address: {{ cobbler_pxe_network | ipaddr('net') | ipaddr('+' ~ cobbler_dns_ip_offset ~ '') | ipaddr('address') }}
     depends_on:
       cobblerd:
         condition: service_started
