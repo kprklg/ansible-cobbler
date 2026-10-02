@@ -1,0 +1,101 @@
+name: galaxy-publish
+
+# Публикует роль в Ansible Galaxy при пуше тега v*.*.*
+# Требует secret GALAXY_API_KEY в настройках репозитория.
+# Получить ключ: https://galaxy.ansible.com/me/preferences
+#
+# ansible-galaxy-cli теперь использует import через web UI или
+# `ansible-galaxy role import` (старый метод через API).
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+jobs:
+  galaxy-import:
+    name: Import to Ansible Galaxy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Ansible
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ansible
+
+      - name: Validate role structure
+        run: |
+          ansible-playbook playbooks/site.yml \
+            -i inventories/staging/hosts.yml \
+            --syntax-check
+
+      - name: Verify meta/main.yml
+        run: |
+          python3 -c "
+          import yaml
+          with open('roles/cobbler/meta/main.yml') as f:
+              meta = yaml.safe_load(f)
+          assert 'galaxy_info' in meta, 'galaxy_info missing'
+          gi = meta['galaxy_info']
+          assert 'role_name' in gi, 'role_name missing'
+          assert gi['role_name'] == 'cobbler'
+          assert 'author' in gi
+          assert 'description' in gi
+          assert 'min_ansible_version' in gi
+          print('meta/main.yml OK')
+          "
+
+      - name: Check role structure
+        run: |
+          # Проверяем, что все обязательные файлы существуют
+          for f in README.md LICENSE meta/main.yml tasks/main.yml defaults/main.yml; do
+            test -f "roles/cobbler/$f" || (echo "MISSING: roles/cobbler/$f"; exit 1)
+          done
+          echo "Role structure OK"
+
+      - name: Import role to Ansible Galaxy
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        env:
+          GALAXY_API_KEY: ${{ secrets.GALAXY_API_KEY }}
+        run: |
+          if [ -z "$GALAXY_API_KEY" ]; then
+            echo "GALAXY_API_KEY secret not set, skipping Galaxy import"
+            echo "Configure it at: https://github.com/kprklg/ansible-cobbler/settings/secrets/actions"
+            exit 0
+          fi
+
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          echo "Importing kprklg.cobbler v${VERSION} to Ansible Galaxy..."
+
+          # Устанавливаем galaxy-cli или используем старый API напрямую
+          # Galaxy v3 API поддерживает import через POST
+          RESPONSE=$(curl -s -X POST \
+            -H "Authorization: Token ${GALAXY_API_KEY}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"github_user\": \"kprklg\",
+              \"github_repo\": \"ansible-cobbler\",
+              \"role_name\": \"cobbler\",
+              \"tag_name\": \"$VERSION\"
+            }" \
+            https://galaxy.ansible.com/api/v3/imports/)
+
+          echo "Galaxy response:"
+          echo "$RESPONSE" | python3 -m json.tool || echo "$RESPONSE"
+
+          STATUS=$(echo "$RESPONSE" | python3 -c "import json,sys; print(json.load(sys.stdin).get('state', 'unknown'))" 2>/dev/null || echo "unknown")
+
+          if [ "$STATUS" = "successful" ]; then
+            echo "✓ Role imported successfully"
+            exit 0
+          elif [ "$STATUS" = "pending" ]; then
+            echo "⏳ Import pending, will be processed by Galaxy"
+            exit 0
+          else
+            echo "❌ Import failed: $STATUS"
+            exit 1
+          fi
