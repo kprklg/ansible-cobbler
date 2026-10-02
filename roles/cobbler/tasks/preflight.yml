@@ -3,7 +3,7 @@
 
 - name: "Проверка поддерживаемой архитектуры"
   ansible.builtin.assert:
-    that: "ansible_architecture in {{ cobbler_supported_archs }}"
+    that: "ansible_architecture in cobbler_supported_archs"
     fail_msg: |
       Роль cobbler поддерживает архитектуры: {{ cobbler_supported_archs | join(', ') }}.
       У вас: {{ ansible_architecture }}.
