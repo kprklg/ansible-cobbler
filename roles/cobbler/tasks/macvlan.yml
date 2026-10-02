@@ -29,10 +29,10 @@
 
 - name: "Конфиг macvlan.netdev"
   ansible.builtin.copy:
-    dest: "/etc/systemd/network/20-{{ cobbler_pxe_iface }}-host.netdev"
+    dest: "/etc/systemd/network/20-{{ cobbler_pxe_iface }}.10.netdev"
     content: |
       [NetDev]
-      Name={{ cobbler_pxe_iface }}-host
+      Name={{ cobbler_pxe_iface }}.10
       Kind=macvlan
 
       [MACVLAN]
@@ -40,10 +40,10 @@
 
 - name: "Конфиг macvlan.network"
   ansible.builtin.copy:
-    dest: "/etc/systemd/network/20-{{ cobbler_pxe_iface }}-host.network"
+    dest: "/etc/systemd/network/20-{{ cobbler_pxe_iface }}.10.network"
     content: |
       [Match]
-      Name={{ cobbler_pxe_iface }}-host
+      Name={{ cobbler_pxe_iface }}.10
 
       [Network]
       Address={{ cobbler_pxe_ip }}

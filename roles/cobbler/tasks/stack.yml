@@ -6,19 +6,19 @@
     name: cobbler-pxe
     driver: macvlan
     driver_options:
-      parent: "{{ cobbler_pxe_iface }}-host"
-    ipam_options:
-      subnet: "{{ cobbler_pxe_network }}"
-      gateway: "{{ cobbler_pxe_ip | ipaddr('address') }}"
-      iprange: "{{ cobbler_pxe_network | ipaddr('network') }}.128/25"
+      parent: "{{ cobbler_pxe_iface }}.10"
+    ipam_config:
+      - subnet: "{{ cobbler_pxe_network }}"
+        gateway: "{{ cobbler_pxe_ip | ipaddr('address') }}"
+        iprange: "{{ cobbler_pxe_network | ipaddr('+128') | ipaddr('address') }}/25"
     state: present
 
 - name: "docker compose up -d (запуск всего стека)"
   community.docker.docker_compose_v2:
     project_src: "{{ cobbler_workdir }}"
     state: present
-    pull: no
-    build: no
+    pull: never
+    build: never
 
 - name: "Ожидание готовности cobblerd (порт 25151)"
   ansible.builtin.shell: |
