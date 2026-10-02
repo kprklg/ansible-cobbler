@@ -77,14 +77,18 @@
   changed_when: check_settings.rc != 0
 
 # === users.conf, users.digest, auth.conf ===
-# Генерируем users.digest через python crypt один раз (на control машине)
+# Генерируем users.digest через passlib + SHA3-512 (алгоритм, используемый Cobbler 4)
+# Python 3.13 не имеет модуля `crypt` и Cobbler 4 ожидает хеш в формате
+# `hashlib.sha3_512(password.encode('utf-8')).hexdigest()` (см. settings.yaml ->
+# modules.authentication.hash_algorithm = sha3_512 и configfile.py:hashfun).
+# Без правильного хеша users.digest остаётся пустым, и Web UI/XML-RPC возвращают
+# `faultCode: 1` при логине.
 - name: "Сгенерировать users.digest для пароля {{ cobbler_default_password }} (one-time)"
   ansible.builtin.shell: |
     python3 -c "
-    import crypt
-    salt = '\$1\$cobbler\$'
-    hash_val = crypt.crypt('{{ cobbler_default_password }}', salt)
-    print(f'cobbler:Cobbler:{hash_val}')
+    import hashlib
+    h = hashlib.sha3_512('{{ cobbler_default_password }}'.encode('utf-8')).hexdigest()
+    print(f'cobbler:Cobbler:{h}')
     " > /tmp/cobbler-users.digest
     ls -la /tmp/cobbler-users.digest
   register: users_digest_gen
