@@ -13,7 +13,11 @@
 > [CHANGELOG](CHANGELOG.md) ·
 > [SECURITY](SECURITY.md) ·
 > [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) ·
-> [CONTRIBUTING](CONTRIBUTING.md)
+> [CONTRIBUTING](CONTRIBUTING.md) ·
+> [FAQ](docs/FAQ.md)
+
+> ⚡ **Быстрые команды:** `make help` покажет все цели Makefile
+> (install / test / lint / rebuild / logs / status / ...)
 
 > 👥 **Участники:** Сообщить о баге через [bug report](../../issues/new?template=bug_report.md),
 > предложить улучшение через [feature request](../../issues/new?template=feature_request.md),
