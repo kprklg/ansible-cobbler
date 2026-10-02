@@ -12,7 +12,8 @@
 > [TROUBLESHOOTING](TROUBLESHOOTING.md) ·
 > [CHANGELOG](CHANGELOG.md) ·
 > [SECURITY](SECURITY.md) ·
-> [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
+> [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md) ·
+> [CONTRIBUTING](CONTRIBUTING.md)
 
 > 👥 **Участники:** Сообщить о баге через [bug report](../../issues/new?template=bug_report.md),
 > предложить улучшение через [feature request](../../issues/new?template=feature_request.md),
@@ -21,6 +22,36 @@
 Устанавливает PXE-провижининг сервер **Cobbler 4.x** на Raspberry Pi (aarch64) или любой x86_64-хост с Debian/Ubuntu.
 
 > Роль **полностью автономная**: все артефакты (`compose.yml`, `Dockerfile`'ы, патчи, webroot) генерируются из upstream-образов `ghcr.io/cobbler/*`. Бэкапы и предварительно подготовленные файлы не требуются.
+
+---
+
+## ✨ Возможности
+
+- 🚀 **Полностью автоматическая** установка: `apt` + `docker compose` + `systemd`
+- 🐳 **Docker Compose стек** из 7 сервисов (cobblerd, web, dns, dhcp, tftp, http-api, traefik)
+- 📦 **Patched upstream-образы** — собираются ролью с inline-патчами (Cobbler 4 compatibility)
+- 🌐 **macvlan + NAT MASQUERADE** для PXE-клиентов
+- 🔄 **Systemd-автозапуск** (`cobbler-recover.service`) после ребута
+- 🔐 **Безопасный пароль** в `users.digest` (SHA3-512)
+- 🏷️ **Теги** для частичного запуска (`--tags network`, `--tags stack`, ...)
+- 🏛️ **aarch64 + x86_64** — на RPi через qemu-эмуляцию, на Intel/AMD нативно
+- 📚 **6 документов**: README + PREREQUISITES + ARCHITECTURE + TROUBLESHOOTING + CHANGELOG + SECURITY
+- 🤖 **CI**: 4 workflow (lint / syntax-check / aarch64-smoke / release) + Dependabot
+
+---
+
+## 📋 Содержание
+
+1. [Что нужно сделать до запуска](#-что-нужно-сделать-до-запуска-плейбука)
+2. [Что делает роль автоматически](#-что-делает-роль-автоматически)
+3. [Требования к хосту](#-требования-к-хосту)
+4. [Поддерживаемые архитектуры](#-поддерживаемые-архитектуры)
+5. [После установки](#-после-установки)
+6. [CI / автотесты](#-ci--автотесты)
+7. [Переменные роли](#-переменные-роли)
+9. [Теги](#-теги)
+10. [Changelog](#-changelog)
+11. [Известные ограничения](#-известные-ограничения)
 
 ---
 
