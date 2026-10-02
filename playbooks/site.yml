@@ -11,6 +11,8 @@
   hosts: cobbler
   become: yes
   gather_facts: yes
+  collections:
+    - ansible.utils
 
   roles:
     - role: cobbler
