@@ -1,0 +1,63 @@
+name: mkdocs
+
+# Собирает и деплоит сайт документации (mkdocs-material) на GitHub Pages
+# при push в main. URL: https://kprklg.github.io/ansible-cobbler/
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  mkdocs:
+    name: Build and deploy docs site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-mkdocs-${{ hashFiles('mkdocs.yml') }}
+          restore-keys: ${{ runner.os }}-mkdocs-
+
+      - name: Install mkdocs + material
+        run: |
+            python3 -m pip install --upgrade pip
+            python3 -m pip install \
+              mkdocs \
+              mkdocs-material \
+              pymdown-extensions \
+              mdx_truly_sane_lists
+
+      - name: Build site
+        run: mkdocs build --strict
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Summary
+        if: success()
+        run: |
+          echo "✓ Docs deployed to https://kprklg.github.io/ansible-cobbler/"
