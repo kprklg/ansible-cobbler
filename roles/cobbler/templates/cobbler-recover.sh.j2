@@ -4,7 +4,7 @@
 #
 # Что делает:
 #   1. Включает IP forwarding
-#   2. Включает promisc на {{ pxe_iface }}
+#   2. Включает promisc на {{ cobbler_pxe_iface }}
 #   3. Создаёт macvlan (если systemd-networkd не сделал)
 #   4. Добавляет NAT MASQUERADE
 #   5. Ждёт Docker daemon
@@ -17,10 +17,10 @@
 set -u
 
 COMPOSE_DIR="{{ cobbler_workdir }}"
-PXE_IFACE="{{ pxe_iface }}"
-WIFI_IFACE="{{ wifi_iface }}"
-PXE_IP="{{ pxe_ip }}"
-PXE_NETWORK="{{ pxe_network }}"
+PXE_IFACE="{{ cobbler_pxe_iface }}"
+WIFI_IFACE="{{ cobbler_wifi_iface }}"
+PXE_IP="{{ cobbler_pxe_ip }}"
+PXE_NETWORK="{{ cobbler_pxe_network }}"
 PXE_HOST_IFACE="${PXE_IFACE}-host"
 
 log() { echo "[$(date +%H:%M:%S)] $*" >&2; }
