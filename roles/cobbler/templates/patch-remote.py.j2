@@ -8,15 +8,27 @@ import sys
 
 REMOTE_PY = "/usr/lib/python3.13/site-packages/cobbler/remote.py"
 
-OLD_CODE = """def get_valid_distro_boot_loaders(self):"""
+# В cobbler 4.x сигнатура get_valid_distro_boot_loaders изменилась:
+# было:  def get_valid_distro_boot_loaders(self):
+# стало: def get_valid_distro_boot_loaders(
+#             self, distro_uid: Optional[str], token: Optional[str] = None
+#         ) -> List[str]:
+# И в cobbler 4 удалены get_autoinstall_templates / get_autoinstall_snippets,
+# которые вызывает cobbler-web v1.x. Восстанавливаем их.
+import re
 
-NEW_CODE = """def get_autoinstall_templates(self, token):
-    return self.tftpgen.get_autoinstall_templates()
-
-def get_autoinstall_snippets(self, token):
-    return self.tftpgen.get_autoinstall_snippets()
-
-def get_valid_distro_boot_loaders(self):"""
+# Патч ищет 4-пробельный отступ перед def (метод внутри класса).
+# Заменяет "    def get_valid_distro_boot_loaders(" на два новых метода + тот же def.
+OLD_ANCHOR = "    def get_valid_distro_boot_loaders("
+NEW_CODE = (
+    "    def get_autoinstall_templates(self, token):\n"
+    "        return self.tftpgen.get_autoinstall_templates()\n"
+    "\n"
+    "    def get_autoinstall_snippets(self, token):\n"
+    "        return self.tftpgen.get_autoinstall_snippets()\n"
+    "\n"
+    "    def get_valid_distro_boot_loaders("
+)
 
 with open(REMOTE_PY) as f:
     content = f.read()
@@ -25,11 +37,11 @@ if "def get_autoinstall_templates" in content:
     print("remote.py: already patched, skipping")
     sys.exit(0)
 
-if OLD_CODE not in content:
-    print(f"ERROR: anchor not found in {REMOTE_PY}", file=sys.stderr)
+if OLD_ANCHOR not in content:
+    print(f"ERROR: anchor '{OLD_ANCHOR}' not found in {REMOTE_PY}", file=sys.stderr)
     sys.exit(1)
 
-content = content.replace(OLD_CODE, NEW_CODE)
+content = content.replace(OLD_ANCHOR, NEW_CODE)
 
 with open(REMOTE_PY, "w") as f:
     f.write(content)
