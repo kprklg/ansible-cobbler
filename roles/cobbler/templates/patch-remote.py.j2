@@ -15,6 +15,10 @@ REMOTE_PY = "/usr/lib/python3.13/site-packages/cobbler/remote.py"
 #         ) -> List[str]:
 # И в cobbler 4 удалены get_autoinstall_templates / get_autoinstall_snippets,
 # которые вызывает cobbler-web v1.x. Восстанавливаем их.
+#
+# ВАЖНО: в cobbler 4 templates и snippets — это один и тот же тип Template,
+# а не отдельные модули. Они хранятся в self.api.get_items("template"),
+# а не в self.tftpgen (которого больше нет).
 import re
 
 # Патч ищет 4-пробельный отступ перед def (метод внутри класса).
@@ -22,10 +26,27 @@ import re
 OLD_ANCHOR = "    def get_valid_distro_boot_loaders("
 NEW_CODE = (
     "    def get_autoinstall_templates(self, token):\n"
-    "        return self.tftpgen.get_autoinstall_templates()\n"
+    "        # Cobbler 4: templates/snippets — это Template items,\n"
+    "        # не методы tftpgen. Возвращаем имена всех template items.\n"
+    "        try:\n"
+    "            return [t.name for t in self.api.get_items('template')]\n"
+    "        except Exception as exc:\n"
+    "            self._log('get_autoinstall_templates', token=token)\n"
+    "            raise exc\n"
     "\n"
     "    def get_autoinstall_snippets(self, token):\n"
-    "        return self.tftpgen.get_autoinstall_snippets()\n"
+    "        # Cobbler 4: snippets — это template items с path вида\n"
+    "        # 'snippets/<name>'. Возвращаем имена snippet-items.\n"
+    "        try:\n"
+    "            snippets = []\n"
+    "            for t in self.api.get_items('template'):\n"
+    "                path = getattr(t, 'path', '') or ''\n"
+    "                if path.startswith('snippets'):\n"
+    "                    snippets.append(path)\n"
+    "            return snippets\n"
+    "        except Exception as exc:\n"
+    "            self._log('get_autoinstall_snippets', token=token)\n"
+    "            raise exc\n"
     "\n"
     "    def get_valid_distro_boot_loaders("
 )
@@ -46,4 +67,4 @@ content = content.replace(OLD_ANCHOR, NEW_CODE)
 with open(REMOTE_PY, "w") as f:
     f.write(content)
 
-print("remote.py patched (added get_autoinstall_templates + get_autoinstall_snippets)")
+print("remote.py patched (added get_autoinstall_templates + get_autoinstall_snippets for Cobbler 4)")

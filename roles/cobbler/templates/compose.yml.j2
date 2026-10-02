@@ -116,7 +116,7 @@ services:
       - "--api.dashboard=true"
       - "--api.insecure=true"
     ports:
-      - "{{ cobbler_mgmt_ip }}:80:80"
+      - "0.0.0.0:80:80"
       - "127.0.0.1:8082:8082"
     networks:
       - cobbler
