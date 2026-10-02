@@ -1,0 +1,36 @@
+---
+# ansible-lint configuration
+# https://ansible.readthedocs.io/projects/lint/configuring/
+
+profile: production
+
+# Пути, которые нужно проверять
+paths:
+  - roles/cobbler/
+  - playbooks/
+  - inventories/
+
+# Пути, которые нужно игнорировать
+exclude_paths:
+  - .cache/
+  - .github/
+  - filter_plugins/
+
+# Правила (false = отключить, true = включить)
+rules:
+  # Используется много YAML для шаблонов Jinja2
+  jinja: false
+  jinja2: false
+  jinja[spacing]: false
+
+  # FQCN — это хорошо, но в роли используются короткие имена
+  fqcn[action-core]: false
+
+  # Некоторые warnings слишком шумные для проекта такого размера
+  no-changed-when: false
+  no-handler: false
+  var-naming[no-role-prefix]: false
+
+# Переопределение отдельных правил
+ignore:
+  - role-name  # имя роли — cobbler, не cobbler-role
