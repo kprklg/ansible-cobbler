@@ -8,7 +8,12 @@
 > [ARCHITECTURE](ARCHITECTURE.md) ·
 > [TROUBLESHOOTING](TROUBLESHOOTING.md) ·
 > [CHANGELOG](CHANGELOG.md) ·
-> [SECURITY](SECURITY.md)
+> [SECURITY](SECURITY.md) ·
+> [CODE_OF_CONDUCT](CODE_OF_CONDUCT.md)
+
+> 👥 **Участники:** Сообщить о баге через [bug report](../../issues/new?template=bug_report.md),
+> предложить улучшение через [feature request](../../issues/new?template=feature_request.md),
+> или прочитать [Contributor Covenant](CODE_OF_CONDUCT.md) перед PR.
 
 Устанавливает PXE-провижининг сервер **Cobbler 4.x** на Raspberry Pi (aarch64) или любой x86_64-хост с Debian/Ubuntu.
 
