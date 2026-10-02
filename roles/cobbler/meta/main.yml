@@ -1,26 +1,35 @@
 ---
-# meta/main.yml — метаданные роли
+# meta/main.yml — метаданные роли для Ansible Galaxy
 galaxy_info:
   role_name: cobbler
+  namespace: kprklg
   author: MiniMax-M3 (rasp01 team)
   description: >
-    Установка PXE-провижининг сервера Cobbler 4.x на Debian-хостах.
-    Полностью автономная — все артефакты (compose.yml, Dockerfile'ы, патчи, webroot)
-    генерируются playbook'ом из upstream-образов (ghcr.io/cobbler/*).
-    Поддерживает aarch64 (Raspberry Pi с эмуляцией qemu) и x86_64 (нативно).
-    Не требует бэкапов или предварительно подготовленных файлов.
+    Ansible-роль для установки PXE-провижининг сервера Cobbler 4.x на
+    Debian/Ubuntu. Полностью автономная: все артефакты (compose.yml,
+    Dockerfile'ы, патчи, webroot) генерируются playbook'ом из upstream-образов
+    ghcr.io/cobbler/*. Поддерживает aarch64 (Raspberry Pi с эмуляцией qemu)
+    и x86_64 (нативно). Не требует бэкапов или предварительно подготовленных
+    файлов. Автоматически настраивает macvlan, NAT, systemd-recover.
+  company: "rasp01 team"
   license: MIT
   min_ansible_version: "2.14"
+  max_ansible_version: "2.20"
+
+  issue_tracker_url: https://github.com/kprklg/ansible-cobbler/issues
 
   platforms:
     - name: Debian
       versions:
-        - bookworm
-        - trixie
+        - bookworm    # 12
+        - trixie      # 13
     - name: Ubuntu
       versions:
-        - jammy      # 22.04 LTS
-        - noble      # 24.04 LTS
+        - jammy       # 22.04 LTS
+        - noble       # 24.04 LTS
+    - name: EL
+      versions:
+        - "9"
 
   galaxy_tags:
     - cobbler
@@ -28,12 +37,22 @@ galaxy_info:
     - provisioning
     - raspberry_pi
     - arm64
+    - aarch64
     - amd64
+    - x86_64
     - docker
+    - compose
     - qemu
+    - emulation
+    - binfmt
+    - networking
+    - nat
+    - macvlan
+    - systemd
+    - debian
+    - ubuntu
+    - kickstart
+    - preseed
+    - ipxe
 
-  dependencies:
-    - role: geerlingguy.docker
-      vars:
-        docker_install_compose: true
-        docker_users: ["{{ ansible_user }}"]
+  dependencies: []    # Интенционально пустой: docker зависит от хоста
