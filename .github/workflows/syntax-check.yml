@@ -39,7 +39,7 @@ jobs:
             playbook: playbooks/site.yml
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Ansible ${{ matrix.ansible-version }}
         run: |
