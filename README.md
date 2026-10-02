@@ -3,6 +3,13 @@
 [![Version v1.1.0](https://img.shields.io/badge/version-v1.1.0-brightgreen)](../../releases/tag/v1.1.0)
 [![License MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
+> 📚 **Документация:** [README](README.md) (вы здесь) ·
+> [PREREQUISITES](PREREQUISITES.md) ·
+> [ARCHITECTURE](ARCHITECTURE.md) ·
+> [TROUBLESHOOTING](TROUBLESHOOTING.md) ·
+> [CHANGELOG](CHANGELOG.md) ·
+> [SECURITY](SECURITY.md)
+
 Устанавливает PXE-провижининг сервер **Cobbler 4.x** на Raspberry Pi (aarch64) или любой x86_64-хост с Debian/Ubuntu.
 
 > Роль **полностью автономная**: все артефакты (`compose.yml`, `Dockerfile`'ы, патчи, webroot) генерируются из upstream-образов `ghcr.io/cobbler/*`. Бэкапы и предварительно подготовленные файлы не требуются.
