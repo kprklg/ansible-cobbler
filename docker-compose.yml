@@ -1,0 +1,40 @@
+# docker-compose.yml — для локального запуска образа ansible-cobbler
+# Использование:
+#   docker compose up
+#   docker compose run ansible-cobbler install
+#   docker compose run ansible-cobbler shell
+
+services:
+  ansible-cobbler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: kprklg/ansible-cobbler:latest
+    container_name: ansible-cobbler
+    hostname: ansible-cobbler
+    privileged: true
+    network_mode: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./inventories:/opt/ansible-cobbler/inventories:rw
+      - ./playbooks:/opt/ansible-cobbler/playbooks:rw
+      - ansible-cobbler-cache:/root/.ansible:rw
+      - ansible-cobbler-collections:/root/.ansible/collections:rw
+    environment:
+      ANSIBLE_HOST_KEY_CHECKING: "False"
+      ANSIBLE_STDOUT_CALLBACK: "yaml"
+      COBBLER_MGMT_IP: "${COBBLER_MGMT_IP:-192.168.0.88}"
+      COBBLER_PXE_IFACE: "${COBBLER_PXE_IFACE:-eth0}"
+      COBBLER_WIFI_IFACE: "${COBBLER_WIFI_IFACE:-eth1}"
+      COBBLER_PXE_NETWORK: "${COBBLER_PXE_NETWORK:-10.254.254.0/24}"
+      COBBLER_PXE_IP: "${COBBLER_PXE_IP:-10.254.254.1/24}"
+      COBBLER_DEFAULT_USER: "${COBBLER_DEFAULT_USER:-cobbler}"
+      COBBLER_DEFAULT_PASSWORD: "${COBBLER_DEFAULT_PASSWORD:-cobbler}"
+      COBBLER_SKIP_BUILDS: "${COBBLER_SKIP_BUILDS:-false}"
+    stdin_open: true
+    tty: true
+    command: ["help"]
+
+volumes:
+  ansible-cobbler-cache:
+  ansible-cobbler-collections:
