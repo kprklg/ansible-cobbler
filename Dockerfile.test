@@ -1,0 +1,70 @@
+# Dockerfile.test
+# Образ для запуска/тестирования ansible-cobbler в контейнере.
+# Используется в CI (aarch64-smoke) и для локальной разработки.
+#
+# Сборка:   docker build -f Dockerfile.test -t ansible-cobbler:test ..
+# Запуск:   docker run --rm -it ansible-cobbler:test bash
+#
+# Внутри контейнера доступны:
+#   - ansible + community.docker collection
+#   - yamllint, ansible-lint
+#   - все ролевые файлы под /opt/role
+#
+# НЕ включает docker daemon — для pxe2-стека нужны capabilities.
+
+FROM debian:13-slim
+
+LABEL org.opencontainers.image.title="ansible-cobbler test image" \
+  org.opencontainers.image.source="https://github.com/kprklg/ansible-cobbler" \
+  org.opencontainers.image.licenses="MIT"
+
+ENV DEBIAN_FRONTEND=noninteractive \
+  ANSIBLE_HOME=/opt/role \
+  ANSIBLE_COLLECTIONS_PATH=/usr/share/ansible/collections
+
+# Системные зависимости
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates curl gnupg git \
+    python3 python3-pip python3-yaml python3-passlib python3-jinja2 \
+    ansible-core ansible \
+    iptables-persistent netfilter-persistent \
+    yamllint \
+    qemu-user-static binfmt-support \
+    sudo \
+    && \
+  rm -rf /var/lib/apt/lists/*
+
+# Preseed для неинтерактивной установки iptables-persistent
+RUN echo "iptables-persistent iptables-persistent/autosave_v4 boolean true" | debconf-set-selections && \
+    echo "iptables-persistent iptables-persistent/autosave_v6 boolean true" | debconf-set-selections
+
+# Ansible collections
+RUN ansible-galaxy collection install community.docker --no-cache-dir
+
+# Python-пакеты для ansible-lint
+RUN pip3 install --break-system-packages --no-cache-dir \
+    ansible-lint==6.22.2
+
+# Копируем роль
+WORKDIR ${ANSIBLE_HOME}
+COPY . ${ANSIBLE_HOME}/
+
+# Создаём пользователя ansible (uid 1000), чтобы не запускать от root
+RUN useradd -m -u 1000 -s /bin/bash ansible && \
+    chown -R ansible:ansible ${ANSIBLE_HOME}
+USER ansible
+
+# Дефолтная команда — проверить окружение
+CMD ["bash", "-c", "\
+    ansible --version | head -3 && \
+    echo '---' && \
+    yamllint --version && \
+    echo '---' && \
+    ansible-lint --version && \
+    echo '---' && \
+    ls -la ${ANSIBLE_HOME} \
+    "]
+
+# Healthcheck — yamllint на основных файлах
+HEALTHCHECK --interval=60s --timeout=10s --start-period=5s --retries=3 \
+  CMD yamllint . || exit 1
