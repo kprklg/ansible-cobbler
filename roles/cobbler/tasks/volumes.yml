@@ -3,7 +3,7 @@
 
 # Проверяем существование volumes (idempotent)
 - name: "Получить список существующих volumes"
-  ansible.builtin.command: docker volume ls --format '{{.Name}}'
+  ansible.builtin.command: docker volume ls --format '{% raw %}{{.Name}}{% endraw %}'
   register: existing_volumes
   changed_when: false
   check_mode: false
