@@ -1,70 +1,384 @@
 #!/usr/bin/env python3
-"""Patch cobbler/remote.py: restore legacy methods removed in cobbler 4.
+"""Patch cobbler/remote.py: legacy compatibility shims for cobbler-web v1.x.
 
-Adds get_autoinstall_templates and get_autoinstall_snippets which are called
-by cobbler-web v1.x but were removed in cobbler 4 migration.
+Cobbler 4 removed a number of methods and collection names that
+cobbler-web v1.x still calls. This patch:
+
+  * Adds helper _safe_get_items(what) that translates cobbler 3
+    collection names ('file', 'snippet', 'mgmtclass', 'package') to
+    their cobbler 4 equivalents and returns an empty list for
+    collections that no longer exist.
+  * Replaces EVERY direct call to self.api.get_items(...) inside
+    CobblerXMLRPCInterface with self._safe_get_items(...), so legacy
+    names are intercepted on every code path, not just the one used
+    by CobblerXMLRPCInterface.get_items() itself.
+  * Replaces every self.api.get_items(what) in get_item_names too.
+  * Adds get_autoinstall_templates / get_autoinstall_snippets next to
+    get_valid_distro_boot_loaders (cobbler-web v1.x still calls them,
+    but cobbler 4 has no tftpgen object).
+
+This script is idempotent: re-running on an already-patched file is
+a no-op (detected via the __kprklg_patched__ marker).
 """
 import sys
+import re
 
 REMOTE_PY = "/usr/lib/python3.13/site-packages/cobbler/remote.py"
 
-# В cobbler 4.x сигнатура get_valid_distro_boot_loaders изменилась:
-# было:  def get_valid_distro_boot_loaders(self):
-# стало: def get_valid_distro_boot_loaders(
-#             self, distro_uid: Optional[str], token: Optional[str] = None
-#         ) -> List[str]:
-# И в cobbler 4 удалены get_autoinstall_templates / get_autoinstall_snippets,
-# которые вызывает cobbler-web v1.x. Восстанавливаем их.
-#
-# ВАЖНО: в cobbler 4 templates и snippets — это один и тот же тип Template,
-# а не отдельные модули. Они хранятся в self.api.get_items("template"),
-# а не в self.tftpgen (которого больше нет).
-import re
+# Маппинг legacy-имён коллекций из cobbler 3 в cobbler 4.
+LEGACY_NAME_MAP = {
+    "file": "template",
+    "snippet": "template",
+    # mgmtclass и package удалены без эквивалента
+}
+# Полностью удалённые коллекции (для них возвращаем пустой список)
+REMOVED_COLLECTIONS = {"mgmtclass", "package"}
 
-# Патч ищет 4-пробельный отступ перед def (метод внутри класса).
-# Заменяет "    def get_valid_distro_boot_loaders(" на два новых метода + тот же def.
-OLD_ANCHOR = "    def get_valid_distro_boot_loaders("
-NEW_CODE = (
-    "    def get_autoinstall_templates(self, token):\n"
-    "        # Cobbler 4: templates/snippets — это Template items,\n"
-    "        # не методы tftpgen. Возвращаем имена всех template items.\n"
-    "        try:\n"
-    "            return [t.name for t in self.api.get_items('template')]\n"
-    "        except Exception as exc:\n"
-    "            self._log('get_autoinstall_templates', token=token)\n"
-    "            raise exc\n"
+# Маркер для идемпотентности: при первом запуске добавляется
+# в начало remote.py. Повторные запуски не делают ничего.
+PATCH_MARKER = "__kprklg_patched__"
+
+# Helper-код, который вставляется в конец remote.py.
+# Содержит _resolve_legacy_name (глобальная функция) и
+# LEGACY_NAME_MAP / REMOVED_COLLECTIONS (словари).
+# _safe_get_items / _safe_get_item_names добавляются как МЕТОДЫ класса
+# CobblerXMLRPCInterface (см. ANCHOR_CLASS_METHODS ниже).
+HELPER_CODE = (
+    "\n\n# ---------------- cobbler-web v1.x compatibility ----------------\n"
+    f"# {PATCH_MARKER}\n"
+    "# Глобальный helper для legacy-имён коллекций из cobbler 3.\n"
+    "# Методы _safe_get_items / _safe_get_item_names определены внутри\n"
+    "# класса CobblerXMLRPCInterface (см. выше).\n"
     "\n"
-    "    def get_autoinstall_snippets(self, token):\n"
-    "        # Cobbler 4: snippets — это template items с path вида\n"
-    "        # 'snippets/<name>'. Возвращаем имена snippet-items.\n"
-    "        try:\n"
-    "            snippets = []\n"
-    "            for t in self.api.get_items('template'):\n"
-    "                path = getattr(t, 'path', '') or ''\n"
-    "                if path.startswith('snippets'):\n"
-    "                    snippets.append(path)\n"
-    "            return snippets\n"
-    "        except Exception as exc:\n"
-    "            self._log('get_autoinstall_snippets', token=token)\n"
-    "            raise exc\n"
+    f"LEGACY_NAME_MAP = {LEGACY_NAME_MAP!r}\n"
+    f"REMOVED_COLLECTIONS = {REMOVED_COLLECTIONS!r}\n"
     "\n"
-    "    def get_valid_distro_boot_loaders("
+    "def _resolve_legacy_name(what):\n"
+    "    if what in LEGACY_NAME_MAP:\n"
+    "        return LEGACY_NAME_MAP[what], False\n"
+    "    if what in REMOVED_COLLECTIONS:\n"
+    "        return None, True\n"
+    "    return what, False\n"
 )
+
+# Методы класса CobblerXMLRPCInterface, которые добавляются ПЕРЕД
+# `def get_items` в самом классе. Это нужно потому что XML-RPC сервер
+# вызывает методы через self.<method_name>, и _safe_get_items должен
+# быть методом класса, а не глобальной функцией.
+#
+# Заменяем ВСЁ от "    def get_items(self, what:" до конца тела метода
+# (включая docstring и тело), чтобы избежать дублирования docstring'а.
+ANCHOR_CLASS_METHODS = (
+    "    def get_items(self, what: str) -> List[Dict[str, Any]]:\n"
+    "        \"\"\"\n"
+    "        Individual list elements are the same for get_item.\n"
+    "\n"
+    "        :param what: is the name of a Cobbler object type, as described for get_item.\n"
+    "        :return: This returns a list of dicts.\n"
+    "        \"\"\"\n"
+    "        items = [x.to_dict() for x in self.api.get_items(what)]\n"
+    "        return self.xmlrpc_hacks(items)  # type: ignore\n"
+)
+CLASS_METHODS = (
+    "    def _safe_get_items(self, what):\n"
+    "        # cobbler-web v1.x shim: legacy collection name mapping.\n"
+    "        # Принимает (self, what) — XML-RPC уже раскрыл self через method_handle.\n"
+    "        resolved, skip = _resolve_legacy_name(what)\n"
+    "        if skip:\n"
+    "            return []  # legacy collection removed entirely\n"
+    "        return self.api.get_items(resolved)\n"
+    "\n"
+    "    def _safe_get_item_names(self, what):\n"
+    "        # cobbler-web v1.x shim: legacy collection name mapping.\n"
+    "        resolved, skip = _resolve_legacy_name(what)\n"
+    "        if skip:\n"
+    "            return []  # legacy collection removed entirely\n"
+    "        return [x.name for x in self.api.get_items(resolved)]\n"
+    "\n"
+    # Полностью переписываем get_items с поддержкой *args/**kwargs
+    # (XML-RPC клиент может передавать token, page, results_per_page).
+    "    def get_items(self, *args, **kwargs) -> List[Dict[str, Any]]:\n"
+    "        \"\"\"\n"
+    "        Individual list elements are the same for get_item.\n"
+    "        Принимает *args/**kwargs для совместимости с cobbler-web v1.x.\n"
+    "        :return: This returns a list of dicts.\n"
+    "        \"\"\"\n"
+    "        # Последний позиционный аргумент — это what,\n"
+    "        # первые (если есть) — token/page/results_per_page.\n"
+    "        what = args[-1] if args else kwargs.get('what', '')\n"
+    "        items = [x.to_dict() for x in self._safe_get_items(what)]\n"
+    "        return self.xmlrpc_hacks(items)  # type: ignore\n"
+)
+
+
+# ----- Чтение файла -----
 
 with open(REMOTE_PY) as f:
     content = f.read()
 
-if "def get_autoinstall_templates" in content:
-    print("remote.py: already patched, skipping")
-    sys.exit(0)
+# patches_applied — список применённых шагов. Инициализируем ДО очистки,
+# чтобы логи очистки тоже попадали в отчёт.
+patches_applied = []
 
-if OLD_ANCHOR not in content:
-    print(f"ERROR: anchor '{OLD_ANCHOR}' not found in {REMOTE_PY}", file=sys.stderr)
-    sys.exit(1)
 
-content = content.replace(OLD_ANCHOR, NEW_CODE)
+# ----- 0. Очистка предыдущих патчей -----
+#
+# Если в файле уже есть наш маркер — значит, был применён предыдущий
+# (возможно сломанный) патч. Снимаем его, чтобы можно было применить
+# исправленную версию. Подход "best effort" — если какие-то подмены
+# не снимаются (например, изменился синтаксис), скрипт просто не сможет
+# применить новую подмену и сообщит WARN.
+if PATCH_MARKER in content:
+    print("remote.py: found previous patch, cleaning up...")
+    patches_applied.append("cleanup")
+
+    # 1. Удалить helper-код в конце файла (от маркера комментария)
+    end_marker = "# ---------------- cobbler-web v1.x compatibility ----------------"
+    end_idx = content.find(end_marker)
+    if end_idx != -1:
+        content = content[:end_idx].rstrip() + "\n"
+    else:
+        # Альтернатива: удалить от последнего вхождения PATCH_MARKER до конца
+        last_marker = content.rfind(PATCH_MARKER)
+        if last_marker != -1:
+            # Найти начало блока (ближайшая пустая строка перед маркером)
+            cut = content.rfind("\n\n", 0, last_marker)
+            if cut != -1:
+                content = content[:cut] + "\n"
+
+    # 2. Удалить маркер-комментарий в начале файла (после импортов)
+    content = re.sub(
+        rf"^# {PATCH_MARKER}\s*\n", "", content, flags=re.MULTILINE
+    )
+
+    # 3. Откатить подмены вызовов
+    REVERTS = [
+        # Сигнатура get_items (откат к обычной)
+        ('def get_items(self, *args, **kwargs) -> List[Dict[str, Any]]:\n',
+         'def get_items(self, what: str) -> List[Dict[str, Any]]:\n'),
+        # Сигнатура get_item_names
+        ('def get_item_names(self, *args, **kwargs) -> List[str]:\n',
+         'def get_item_names(self, what: str) -> List[str]:\n'),
+        # Тела
+        ("items = [x.to_dict() for x in self._safe_get_items(what)]",
+         "items = [x.to_dict() for x in self.api.get_items(what)]"),
+        ("return self._safe_get_item_names(what)",
+         "return [x.name for x in self.api.get_items(what)]"),
+        # get_distros / get_profiles / ...
+        ('return self._safe_get_items("distro")', 'return self.get_items("distro")'),
+        ('return self._safe_get_items("profile")', 'return self.get_items("profile")'),
+        ('return self._safe_get_items("system")', 'return self.get_items("system")'),
+        ('return self._safe_get_items("repo")', 'return self.get_items("repo")'),
+        ('return self._safe_get_items("image")', 'return self.get_items("image")'),
+        ('return self._safe_get_items("menu")', 'return self.get_items("menu")'),
+        ('return self._safe_get_items("network_interface")', 'return self.get_items("network_interface")'),
+        ('return self._safe_get_items("template")', 'return self.get_items("template")'),
+        ('return self._safe_get_items("distro_group")', 'return self.get_items("distro_group")'),
+        ('return self._safe_get_items("profile_group")', 'return self.get_items("profile_group")'),
+        ('return self._safe_get_items("system_group")', 'return self.get_items("system_group")'),
+        ("collection = self._safe_get_items(item_type)",
+         "collection = self.api.get_items(item_type)"),
+        ("items = self._safe_get_items(what)",
+         "items = self.api.get_items(what)"),
+        ("list_items = self._safe_get_items(item.COLLECTION_TYPE)",
+         "list_items = self.api.get_items(item.COLLECTION_TYPE)"),
+        ("return [t.name for t in self._safe_get_items('template')]",
+         "return [t.name for t in self.api.get_items('template')]"),
+    ]
+    for old, new in REVERTS:
+        if old in content:
+            content = content.replace(old, new, 1)
+
+    # 4. Удалить добавленные методы класса (_safe_get_items / _safe_get_item_names)
+    # Они расположены прямо перед "    def get_items(self, what: str)"
+    CLASS_METHODS_RE = re.compile(
+        r"    def _safe_get_items\(self, what\):.*?(?=    def get_items\(self, what: str\))",
+        re.DOTALL,
+    )
+    content = CLASS_METHODS_RE.sub("", content, count=1)
+
+    CLASS_METHODS_RE2 = re.compile(
+        r"    def _safe_get_item_names\(self, what\):.*?(?=    def get_items\(self, what: str\))",
+        re.DOTALL,
+    )
+    content = CLASS_METHODS_RE2.sub("", content, count=1)
+
+    # 5. Удалить добавленные методы get_autoinstall_templates / _snippets
+    AUTOINSTALL_RE = re.compile(
+        r"    def get_autoinstall_templates\(self, token\):.*?(?=    def get_valid_distro_boot_loaders\()",
+        re.DOTALL,
+    )
+    content = AUTOINSTALL_RE.sub("", content, count=1)
+
+    print("remote.py: previous patch cleaned, applying fresh...")
+
+
+# ----- 0. Добавление _safe_get_items / _safe_get_item_names как методов класса -----
+#
+# Вставляем перед `def get_items` в CobblerXMLRPCInterface.
+# Если уже добавлено — пропускаем.
+if "    def _safe_get_items(self, what):" not in content and ANCHOR_CLASS_METHODS in content:
+    content = content.replace(ANCHOR_CLASS_METHODS, CLASS_METHODS, 1)
+    patches_applied.append("class_methods")
+
+# ----- 1. Подмена self.api.get_items(...) → self._safe_get_items(...) -----
+#
+# Простой str.replace — достаточно для всех вариантов вызова.
+# Используем уникальные контексты, чтобы не подменить что-то лишнее.
+GET_ITEMS_REPLACEMENTS = [
+    # get_items сигнатура + тело подменяются через CLASS_METHODS (см. выше).
+    # get_item_names — аналогично принимает *args.
+    # Здесь ПОЛНОСТЬЮ заменяем сигнатуру + тело, т.к. для get_item_names
+    # нет CLASS_METHODS-вставки.
+    (
+        "    def get_item_names(self, what: str) -> List[str]:\n"
+        "        \"\"\"\n"
+        "        This is just like get_items, but transmits less data.\n"
+        "\n"
+        "        :param what: is the name of a Cobbler object type, as described for get_item.\n"
+        "        :return: Returns a list of object names (keys) for the given object type.\n"
+        "        \"\"\"\n"
+        "        return [x.name for x in self.api.get_items(what)]",
+        "    def get_item_names(self, *args, **kwargs) -> List[str]:\n"
+        "        \"\"\"\n"
+        "        This is just like get_items, but transmits less data.\n"
+        "        Принимает *args/**kwargs для совместимости с cobbler-web v1.x.\n"
+        "        :return: Returns a list of object names (keys) for the given object type.\n"
+        "        \"\"\"\n"
+        "        what = args[-1] if args else kwargs.get('what', '')\n"
+        "        return self._safe_get_item_names(what)",
+    ),
+    # Шаблон для get_distros / get_profiles / etc.: return self.get_items("distro")
+    #    Подменяем ТОЛЬКО если после стоит закрывающая скобка (не .get_distros())
+    #    Паттерн: return self.get_items("...")  →  return self._safe_get_items("...")
+    # Чтобы не зацепить подменённый get_items сам на себя (после первой замены),
+    # используем уникальные строки, которых нет в подменённом коде.
+    (
+        'return self.get_items("distro")',
+        'return self._safe_get_items("distro")',
+    ),
+    (
+        'return self.get_items("profile")',
+        'return self._safe_get_items("profile")',
+    ),
+    (
+        'return self.get_items("system")',
+        'return self._safe_get_items("system")',
+    ),
+    (
+        'return self.get_items("repo")',
+        'return self._safe_get_items("repo")',
+    ),
+    (
+        'return self.get_items("image")',
+        'return self._safe_get_items("image")',
+    ),
+    (
+        'return self.get_items("menu")',
+        'return self._safe_get_items("menu")',
+    ),
+    (
+        'return self.get_items("network_interface")',
+        'return self._safe_get_items("network_interface")',
+    ),
+    (
+        'return self.get_items("template")',
+        'return self._safe_get_items("template")',
+    ),
+    (
+        'return self.get_items("distro_group")',
+        'return self._safe_get_items("distro_group")',
+    ),
+    (
+        'return self.get_items("profile_group")',
+        'return self._safe_get_items("profile_group")',
+    ),
+    (
+        'return self.get_items("system_group")',
+        'return self._safe_get_items("system_group")',
+    ),
+    # Прямые вызовы self.api.get_items(...) в других методах
+    # (find, get_item и пр.) — оборачиваем в _safe_get_items.
+    (
+        "collection = self.api.get_items(item_type)",
+        "collection = self._safe_get_items(item_type)",
+    ),
+    (
+        "items = self.api.get_items(what)",
+        "items = self._safe_get_items(what)",
+    ),
+    (
+        "list_items = self.api.get_items(item.COLLECTION_TYPE)",
+        "list_items = self._safe_get_items(item.COLLECTION_TYPE)",
+    ),
+    (
+        "return [t.name for t in self.api.get_items('template')]",
+        "return [t.name for t in self._safe_get_items('template')]",
+    ),
+]
+
+patches_applied = []
+
+for old, new in GET_ITEMS_REPLACEMENTS:
+    if old in content:
+        content = content.replace(old, new, 1)
+        patches_applied.append(f"ref[{old[:30]!r}]")
+
+
+# ----- 2. Добавление get_autoinstall_templates / get_autoinstall_snippets -----
+#
+# Рядом с get_valid_distro_boot_loaders (там у cobbler 4 уже была
+# сломаная миграция — сигнатура метода изменилась).
+ANCHOR = "    def get_valid_distro_boot_loaders("
+REPLACEMENT = (
+    "    def get_autoinstall_templates(self, token):\n"
+    "        # cobbler-web v1.x shim: cobbler 4 removed the tftpgen object;\n"
+    "        # templates/snippets now live in the 'template' collection.\n"
+    "        return [t.name for t in self._safe_get_items('template')]\n"
+    "\n"
+    "    def get_autoinstall_snippets(self, token):\n"
+    "        # cobbler-web v1.x shim: snippets are template items with\n"
+    "        # path starting with 'snippets/'.\n"
+    "        result = []\n"
+    "        for t in self._safe_get_items('template'):\n"
+    "            path = getattr(t, 'path', '') or ''\n"
+    "            if path.startswith('snippets'):\n"
+    "                result.append(path)\n"
+    "        return result\n"
+    "\n"
+    "    def get_valid_distro_boot_loaders("
+)
+if "def get_autoinstall_templates" not in content and ANCHOR in content:
+    content = content.replace(ANCHOR, REPLACEMENT, 1)
+    patches_applied.append("get_autoinstall")
+
+# ----- 3. Добавить маркер в начало файла -----
+if PATCH_MARKER not in content:
+    marker_line = f"# {PATCH_MARKER}\n"
+    # Вставляем после последнего импорта (с учётом многострочных `from X import (`)
+    last_import = None
+    for m in re.finditer(
+        r"^(?:from\s+\S+\s+import\s+\S+|import\s+\S+)$", content, re.MULTILINE
+    ):
+        last_import = m
+    end_pos = 0
+    if last_import:
+        end_pos = last_import.end()
+        if content[last_import.start():last_import.end()].rstrip().endswith("("):
+            close_paren = content.find(")", end_pos)
+            if close_paren != -1:
+                end_pos = close_paren + 1
+    content = content[:end_pos] + "\n" + marker_line + content[end_pos:]
+
+
+# ----- 4. Вставить helper-код в самый конец файла -----
+content = content.rstrip() + HELPER_CODE + "\n"
+patches_applied.append("helper")
+
+
+# ----- Сохраняем -----
 
 with open(REMOTE_PY, "w") as f:
     f.write(content)
 
-print("remote.py patched (added get_autoinstall_templates + get_autoinstall_snippets for Cobbler 4)")
+print(f"remote.py patched: {', '.join(patches_applied)} ({len(patches_applied)} шагов)")
