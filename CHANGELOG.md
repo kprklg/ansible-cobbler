@@ -4,6 +4,85 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [v1.1.1] — 2026-10-05
+
+### Fixed
+
+- **`patch-remote.py` — legacy collection names in Cobbler 4.**
+  After installing v1.1.0, the Web UI raised
+
+      `internal error, collection name "file" not supported`
+      `internal error, collection name "package" not supported`
+
+  on the manage / dashboard page. Root cause: Cobbler 4 removed several
+  collection names that cobbler-web v1.x still calls. The v1.1.0 patch
+  fixed only `CobblerXMLRPCInterface.get_items()` itself, so the error
+  reappeared as soon as the web UI called any of the three other code
+  paths that also reach into `self.api.get_items(...)`:
+
+  - `find` (`collection = self.api.get_items(item_type)`, line 650)
+  - `find_items` / `get_item_resolved_value`
+    (`items = self.api.get_items(what)`, line 2016)
+  - `find` extended lookup
+    (`list_items = self.api.get_items(item.COLLECTION_TYPE)`, line 2209)
+
+  Additionally, the v1.1.0 patch was not idempotent: re-running it on a
+  half-patched file would either no-op (because of the marker) or
+  introduce a `NameError` (because `LEGACY_NAME_MAP` was referenced
+  by `_resolve_legacy_name` but never inserted into the file).
+
+  v1.1.1 fixes this by:
+
+  1. Adding `self._safe_get_items(what)` and `self._safe_get_item_names(what)`
+     as **methods of `CobblerXMLRPCInterface`** (not module-level
+     functions) so `self.<name>` actually resolves on the class.
+  2. Replacing **every** `self.api.get_items(...)` call site in
+     `remote.py` with the safe wrapper (12+ replacements in total).
+  3. Changing `get_items` and `get_item_names` to `(*args, **kwargs)`
+     and extracting `what = args[-1] if args else kwargs.get('what', '')`,
+     so the methods accept the cobbler-web form
+     `get_item_names(token, what)` that the new UI sends.
+  4. Making the script **idempotent**: if `__kprklg_patched__` is
+     already in the file, the script first reverts every prior change
+     (via a list of `(old, new)` pairs and a regex for the class-method
+     block) and then re-applies the current version. A broken image
+     can be fixed by re-running the role with no extra steps.
+
+  Verified end-to-end:
+
+  ```
+  cobbler_api get_items('file')     -> 15+ built-in templates
+  cobbler_api get_items('package')  -> []   (legacy removed)
+  cobbler_api get_items('mgmtclass') -> []   (legacy removed)
+  cobbler_api get_distros(token)     -> []   (no distros configured yet)
+  Web UI manage page -> no longer raises "Server is not reachable"
+  ```
+
+- **`patch-remote.py` — `get_items` signature accepted only 1 positional
+  arg.** XML-RPC clients (cobbler-web) pass `(token, what)` for
+  `get_item_names` and `(page, results_per_page, token, what)` for
+  `get_distros`-style calls. The v1.1.0 patch kept the original
+  `(self, what)` signature, so every call from cobbler-web raised
+  `TypeError: takes 2 positional arguments but 3 were given`. Fixed
+  by accepting `*args, **kwargs` and extracting `what` from the
+  last positional arg.
+
+- **`patch-remote.py` — `IndentationError` after multi-line editing.**
+  When the patch was applied more than once the `return []` line in
+  `_safe_get_item_names` was occasionally lost, leaving
+  `if skip:\n    return [x.name for x in ...]`
+  and breaking cobblerd startup. The cleanup + re-apply step in
+  idempotent mode now detects and restores the correct body.
+
+### Added
+
+- **Molecule regression test** in `molecule/default/verify.yml` that
+  runs `docker exec cobbler-stack-cobblerd-1 python3 -c "..."` for
+  the three legacy collection names (`file`, `package`, `mgmtclass`)
+  plus a normal one (`distro`). The test passes when the cobblerd
+  image was built with v1.1.1+ and fails with the exact cobbler-4
+  error string if a future patch reintroduces the bug.
+
 ## [v1.1.0] — 2026-10-02
 
 ### Added
