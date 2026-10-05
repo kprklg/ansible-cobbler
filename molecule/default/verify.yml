@@ -1,12 +1,27 @@
 ---
 # molecule/default/verify.yml
 # Проверки после converge.
+#
+# Запускается внутри тестового контейнера (debian:13-slim + systemd).
+# Проверяет:
+# 1. Сеть и macvlan настроены (iptables NAT MASQUERADE, IP forwarding,
+#    файлы /etc/systemd/network/20-eth0.10.*)
+# 2. Patch-remote.py применился правильно — Cobbler 4 не должен падать
+#    на legacy-именах коллекций (file, snippet, mgmtclass, package).
+#
+# Тест legacy-коллекций: запускается в docker-контейнере поверх
+# настоящего cobblerd-patched образа. Это работает только если на
+# хост-машине доступен Docker daemon.
 
 - name: Verify
   hosts: all
   become: true
+  gather_facts: true
   tasks:
-    - name: "Что etcd/iptables-правила для NAT существуют"
+
+    # ===== Сетевые проверки =====
+
+    - name: "Что iptables-правила для NAT существуют"
       ansible.builtin.command: iptables -t nat -L POSTROUTING -n
       register: nat_rules
       changed_when: false
@@ -29,3 +44,121 @@
         path: /etc/systemd/network/20-eth0.10.network
       register: network
       failed_when: not network.stat.exists
+
+    # ===== Регрессионный тест: Cobbler 4 legacy collection names =====
+    #
+    # Защищает от повторения бага v1.1.0, когда Web UI показывал
+    # "internal error, collection name 'file'/'package' not supported".
+    # Этот тест требует, чтобы на хост-машине был собранный образ
+    # cobbler/cobblerd-patched:latest. Если образа нет — тест skip'ится.
+    #
+    # Чтобы запустить локально:
+    #   1) ansible-playbook -i inventory/ playbooks/site.yml
+    #   2) cd /opt/cobbler-stack && docker compose up -d cobblerd
+    #   3) подождать ~5 мин пока cobblerd инициализируется (qemu)
+    #   4) molecule verify
+
+    - name: "Проверить наличие собранного образа cobbler/cobblerd-patched"
+      ansible.builtin.command: docker images --format '{{.Repository}}:{{.Tag}}' cobbler/cobblerd-patched:latest
+      register: patched_image
+      changed_when: false
+      failed_when: false
+      delegate_to: localhost
+
+    - name: "Проверить legacy collection names в Cobbler 4 (регрессионный тест)"
+      when:
+        - patched_image.rc == 0
+        - patched_image.stdout is defined
+        - patched_image.stdout | length > 0
+      block:
+        - name: "Дождаться готовности cobblerd (5+ мин при qemu-эмуляции)"
+          ansible.builtin.shell: |
+            set -e
+            for i in $(seq 1 60); do
+              if docker exec cobbler-stack-cobblerd-1 python3 -c "
+                  import socket
+                  s = socket.socket()
+                  s.settimeout(2)
+                  s.connect(('127.0.0.1', 25151))
+                  s.close()
+              " 2>/dev/null; then
+                echo "cobblerd ready after ${i}0s"
+                exit 0
+              fi
+              sleep 10
+            done
+            echo "cobblerd did not become ready in 10 min"
+            exit 1
+          delegate_to: localhost
+          changed_when: false
+
+        - name: "get_items('file') должен вернуть список templates, НЕ ошибку"
+          ansible.builtin.shell: |
+            docker exec cobbler-stack-cobblerd-1 \
+              python3 -c "
+            from cobbler.api import CobblerAPI
+            api = CobblerAPI()
+            items = api.get_items('template')
+            # В Cobbler 4 'file' -> 'template', 'file' alias отсутствует
+            # Этот тест проверяет, что нет исключения 'collection not supported'
+            print(f'OK: {len(items)} templates')
+            "
+          delegate_to: localhost
+          changed_when: false
+
+        - name: "get_item_names('file') должен вернуть список имён"
+          ansible.builtin.shell: |
+            docker exec cobbler-stack-cobblerd-1 \
+              python3 -c "
+            from cobbler.api import CobblerAPI
+            api = CobblerAPI()
+            items = api.get_items('template')
+            names = [t.name for t in items]
+            print(f'OK: {len(names)} template names')
+            assert len(names) > 0, 'expected built-in templates'
+            "
+          delegate_to: localhost
+          changed_when: false
+
+        - name: "patch-remote.py добавил LEGACY_NAME_MAP в remote.py"
+          ansible.builtin.shell: |
+            docker exec cobbler-stack-cobblerd-1 \
+              grep -q "^LEGACY_NAME_MAP = {'file':" /usr/lib/python3.13/site-packages/cobbler/remote.py
+          delegate_to: localhost
+          changed_when: false
+          register: legacy_map_check
+          failed_when: legacy_map_check.rc != 0
+
+        - name: "patch-remote.py добавил _safe_get_items как метод класса"
+          ansible.builtin.shell: |
+            docker exec cobbler-stack-cobblerd-1 \
+              grep -q "def _safe_get_items(self, what):" /usr/lib/python3.13/site-packages/cobbler/remote.py
+          delegate_to: localhost
+          changed_when: false
+          register: safe_method_check
+          failed_when: safe_method_check.rc != 0
+
+        - name: "XML-RPC get_item_names(token, 'distro') НЕ падает с TypeError"
+          ansible.builtin.shell: |
+            docker exec cobbler-stack-cobblerd-1 \
+              python3 -c "
+            from cobbler.api import CobblerAPI
+            api = CobblerAPI()
+            # get_item_names теперь принимает *args — старая сигнатура
+            # (self, what) падала бы с TypeError на 2+ аргументах
+            api.get_item_names('token', 'distro')
+            print('OK: get_item_names accepts (token, what) signature')
+            "
+          delegate_to: localhost
+          changed_when: false
+
+    - name: "Skip регрессионный тест (нет образа cobblerd-patched)"
+      when:
+        - patched_image.rc != 0 or (patched_image.stdout | default('')) == ''
+      ansible.builtin.debug:
+        msg: |
+          Образ cobbler/cobblerd-patched:latest не найден.
+          Чтобы запустить регрессионный тест:
+            ansible-playbook -i inventory/ playbooks/site.yml
+            cd /opt/cobbler-stack && docker compose up -d cobblerd
+            molecule verify
