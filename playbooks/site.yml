@@ -9,8 +9,8 @@
 
 - name: Установка Cobbler на Raspberry Pi
   hosts: cobbler
-  become: yes
-  gather_facts: yes
+  become: true
+  gather_facts: true
   collections:
     - ansible.utils
 

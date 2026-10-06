@@ -1,3 +1,4 @@
+---
 name: release
 
 # Автоматически создаёт GitHub Release при пуше тега v*.*.*
@@ -13,7 +14,7 @@ name: release
 #   5. git push --follow-tags
 #   6. Workflow создаст Release автоматически в двуязычном виде
 
-on:
+'on':
   push:
     tags: ['v*.*.*']
 

@@ -1,3 +1,4 @@
+---
 # .pre-commit-config.yaml
 # Установка:
 #   pip install pre-commit
@@ -46,10 +47,10 @@ repos:
         args: ['--maxkb=1024']
       - id: check-merge-conflict
       - id: detect-private-key
-        # Защита от случайного коммита SSH-ключей и токенов
+      # Защита от случайного коммита SSH-ключей и токенов
 
   - repo: https://github.com/shellcheck-py/shellcheck
     rev: v0.10.0.1
     hooks:
       - id: shellcheck
-        # Проверяет bash/sh скрипты
+      # Проверяет bash/sh скрипты

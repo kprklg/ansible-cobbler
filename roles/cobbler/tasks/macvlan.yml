@@ -4,7 +4,7 @@
 - name: "Включение systemd-networkd"
   ansible.builtin.systemd:
     name: systemd-networkd
-    enabled: yes
+    enabled: true
     state: started
 
 - name: "Конфиг eth0 (link metadata)"
@@ -53,6 +53,6 @@
   ansible.posix.sysctl:
     name: net.ipv4.ip_forward
     value: "1"
-    sysctl_set: yes
+    sysctl_set: true
     state: present
-    reload: yes
+    reload: true

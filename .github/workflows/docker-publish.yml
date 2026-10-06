@@ -1,3 +1,4 @@
+---
 name: docker-publish
 
 # Публикует Docker-образ в GitHub Container Registry (ghcr.io) при пуше тега.
@@ -5,7 +6,7 @@ name: docker-publish
 #
 # Для тестовых сборок используется .dockerhub-cache через buildx.
 
-on:
+'on':
   push:
     tags: ['v*.*.*']
   workflow_dispatch:    # можно запустить вручную

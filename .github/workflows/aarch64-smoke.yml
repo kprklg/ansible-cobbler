@@ -1,3 +1,4 @@
+---
 name: aarch64-smoke
 
 # Лёгкий smoke-тест работоспособности роли в режиме эмуляции aarch64.
@@ -7,7 +8,7 @@ name: aarch64-smoke
 #   - dry-run всех tasks на этапе preflight + dependencies
 #   - наличие всех обязательных файлов роли
 
-on:
+'on':
   push:
     branches: [main]
     tags: ['v*']
@@ -57,7 +58,7 @@ jobs:
             --tags always \
             --check /dev/stdin <<'EOF'
           - hosts: localhost
-            gather_facts: no
+            gather_facts: false
             tasks:
               - name: Render compose.yml
                 ansible.builtin.template:

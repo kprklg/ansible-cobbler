@@ -1,9 +1,12 @@
-# Исключаем директории которые не должны линтиться
-.vscode-server/
-.git/
-node_modules/
-__pycache__/
-
-# Тестовые/локальные файлы
+.vscode-server
+.git
+node_modules
+__pycache__
+.venv
+.ansible
 *.retry
-.ansible/
+
+/.pre-commit-config.yaml
+/requirements.yml
+/mkdocs.yml
+/inventories

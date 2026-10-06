@@ -1,6 +1,7 @@
+---
 name: syntax-check
 
-on:
+'on':
   push:
     branches: [main]
     tags: ['v*']

@@ -1,3 +1,4 @@
+---
 name: galaxy-publish
 
 # Публикует роль в Ansible Galaxy при пуше тега v*.*.*
@@ -7,7 +8,7 @@ name: galaxy-publish
 # ansible-galaxy-cli теперь использует import через web UI или
 # `ansible-galaxy role import` (старый метод через API).
 
-on:
+'on':
   push:
     tags: ['v*.*.*']
 

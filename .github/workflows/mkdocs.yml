@@ -1,9 +1,10 @@
+---
 name: mkdocs
 
 # Собирает и деплоит сайт документации (mkdocs-material) на GitHub Pages
 # при push в main. URL: https://kprklg.github.io/ansible-cobbler/
 
-on:
+'on':
   push:
     branches: [main]
   workflow_dispatch:

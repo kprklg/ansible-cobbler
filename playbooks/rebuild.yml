@@ -3,8 +3,8 @@
 
 - name: Пересборка patched-образов
   hosts: cobbler
-  become: yes
-  gather_facts: yes
+  become: true
+  gather_facts: true
 
   roles:
     - role: cobbler
@@ -15,8 +15,8 @@
       community.docker.docker_compose_v2:
         project_src: "{{ cobbler_workdir }}"
         state: present
-        restarted: yes
-      ignore_errors: yes
+        restarted: true
+      ignore_errors: true
 
     - name: "Готово"
       ansible.builtin.debug:

@@ -30,5 +30,5 @@
 - name: "daemon-reload + enable {{ cobbler_systemd_service_name }}"
   ansible.builtin.systemd:
     name: "{{ cobbler_systemd_service_name }}.service"
-    enabled: yes
-    daemon_reload: yes
+    enabled: true
+    daemon_reload: true

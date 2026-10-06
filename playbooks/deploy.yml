@@ -3,8 +3,8 @@
 
 - name: Только deploy (без пересборки)
   hosts: cobbler
-  become: yes
-  gather_facts: no
+  become: true
+  gather_facts: false
 
   roles:
     - role: cobbler

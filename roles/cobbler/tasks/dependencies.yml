@@ -16,7 +16,7 @@
       - python3-yaml
       - rsync
     state: present
-    update_cache: no
+    update_cache: false
   when: not cobbler_needs_qemu
 
 - name: "Установка пакетов с qemu-user-static (для ARM эмуляции x86_64)"
@@ -30,7 +30,7 @@
       - python3-yaml
       - rsync
     state: present
-    update_cache: no
+    update_cache: false
   when: cobbler_needs_qemu
 
 - name: "Регистрация binfmt для qemu-x86_64 (ARM хоста)"

@@ -1,3 +1,4 @@
+---
 # docker-compose.yml — для локального запуска образа ansible-cobbler
 # Использование:
 #   docker compose up
