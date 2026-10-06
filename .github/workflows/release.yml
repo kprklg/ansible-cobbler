@@ -83,7 +83,7 @@ jobs:
           tail -10 release-body.md
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: v${{ steps.changelog_en.outputs.version }}
           body_path: release-body.md
