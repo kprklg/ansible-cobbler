@@ -1,36 +1,56 @@
 ---
 # ansible-lint configuration
 # https://ansible.readthedocs.io/projects/lint/configuring/
+#
+# Формат совместим с ansible-lint 6.22.2 (ставится в CI через pip
+# в venv). ansible-lint через apt (25.x) тоже работает, но формат
+# ключей может слегка отличаться.
 
 profile: production
 
-# Пути, которые нужно проверять
-paths:
-  - roles/cobbler/
-  - playbooks/
-  - inventories/
-
-# Пути, которые нужно игнорировать
+# Пути для игнорирования
 exclude_paths:
   - .cache/
   - .github/
   - filter_plugins/
 
-# Правила (false = отключить, true = включить)
-rules:
-  # Используется много YAML для шаблонов Jinja2
-  jinja: false
-  jinja2: false
-  jinja[spacing]: false
+# Все нужные отключения — через skip_list
+skip_list:
+  # Имя роли
+  - role-name
 
-  # FQCN — это хорошо, но в роли используются короткие имена
-  fqcn[action-core]: false
+  # Jinja2-шаблоны в YAML вызывают ложные срабатывания на отступах
+  - jinja
+  - jinja2
+  - jinja[spacing]
 
-  # Некоторые warnings слишком шумные для проекта такого размера
-  no-changed-when: false
-  no-handler: false
-  var-naming[no-role-prefix]: false
+  # Используем короткие имена модулей (apt вместо ansible.builtin.apt)
+  - fqcn[action-core]
 
-# Переопределение отдельных правил
-ignore:
-  - role-name  # имя роли — cobbler, не cobbler-role
+  # Одноразовые shell-команды не нуждаются в changed_when
+  - no-changed-when
+
+  # Handlers не используются в этой роли
+  - no-handler
+
+  # Переменные в defaults/main.yml не имеют префикса роли — ОК
+  - var-naming[no-role-prefix]
+
+  # Имена task-ов часто на русском — стандартные правила casing/template не подходят
+  - name[casing]
+  - name[template]
+
+  # templates/*.j2 — Jinja templates сгенерированные Docker-контекстом,
+  # permissions не нужны
+  - risky-file-permissions
+
+  # meta/main.yml: теги типа 'raspberry_pi' валидны в Galaxy, но не в
+  # строгой схеме ansible-lint
+  - meta-no-tags
+
+  # meta/main.yml: 'dependencies' и 'max_ansible_version' — валидные
+  # ключи в Galaxy, но ansible-lint их не знает
+  - schema[meta]
+
+  # pipefail в Ansible shell — не всегда нужен
+  - risky-shell-pipe

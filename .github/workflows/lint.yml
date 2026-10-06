@@ -1,5 +1,18 @@
 name: lint
 
+# Запускает yamllint + ansible-lint на каждом push в main, на тегах
+# и в pull_request в main.
+#
+# История изменений:
+#   - yamllint раньше использовал pipeline-lint/scripts/action-yamllint@v1,
+#     но этот action удалён из GitHub Marketplace. Заменили на прямой
+#     запуск через apt install yamllint.
+#   - ansible-lint раньше ставился через apt, что давало ansible-lint
+#     25.x с очень строгими правилами (включая schema[meta], которое
+#     не принимает наш meta/main.yml). Теперь ставим ansible-lint 6.22.2
+#     через pip с зафиксированной версией ansible-core, что даёт
+#     более терпимый набор правил.
+
 on:
   push:
     branches: [main]
@@ -18,12 +31,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install yamllint
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y yamllint
+
       - name: Run yamllint
-        uses: pipeline-lint/scripts/action-yamllint@v1
-        with:
-          config_file: .yamllint
-          ignore_file: .yamllintignore
-          args: --strict .
+        run: yamllint --strict .
 
   ansible-lint:
     name: ansible-lint
@@ -32,16 +46,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Ansible + linter
+      - name: Install ansible-lint via pip (with deps)
         run: |
-          sudo apt-get update
-          sudo apt-get install -y ansible
-          pip3 install --break-system-packages ansible-lint
+          # Используем venv, чтобы избежать конфликта с apt-managed
+          # ansible-core на ubuntu-latest (который ansible-core 2.19+).
+          # ansible-lint 6.22.2 требует ansible-core >= 2.16.19 и
+          # поддерживает Python 3.13 начиная с ansible-core 2.17.
+          python3 -m venv .venv
+          source .venv/bin/activate
+          pip install --quiet --upgrade \
+            "ansible-core>=2.17.0,<2.19.0" \
+            "ansible>=9.8.0" \
+            "ansible-lint==6.22.2"
+          ansible --version | head -2
+          ansible-lint --version
 
       - name: Install collections
-        run: ansible-galaxy collection install community.docker --no-cache-dir
+        run: |
+          source .venv/bin/activate
+          ansible-galaxy collection install -r requirements.yml --force --no-cache-dir
 
       - name: Run ansible-lint
         run: |
-          ansible-lint --version
+          source .venv/bin/activate
           ansible-lint roles/cobbler/ playbooks/ inventories/
