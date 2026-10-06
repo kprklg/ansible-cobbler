@@ -1,7 +1,17 @@
 name: release
 
 # Автоматически создаёт GitHub Release при пуше тега v*.*.*
-# Полезно в комбинации с git tag + git push.
+# Release notes генерируются в ДВУЯЗЫЧНОМ формате (🇬🇧 English + 🇷🇺 Русский):
+#   * EN — автоматически из секции CHANGELOG.md для текущего тега
+#   * RU — из файла RELEASE_NOTES_RU.md (обновляется вручную при каждом релизе)
+#
+# Процесс выпуска релиза:
+#   1. Обновите CHANGELOG.md — добавьте секцию для новой версии на EN
+#   2. Обновите RELEASE_NOTES_RU.md — переведите ключевые пункты на RU
+#   3. git commit -am "docs: prepare vX.Y.Z release"
+#   4. git tag -a vX.Y.Z -m "vX.Y.Z — <короткое описание>"
+#   5. git push --follow-tags
+#   6. Workflow создаст Release автоматически в двуязычном виде
 
 on:
   push:
@@ -12,7 +22,7 @@ permissions:
 
 jobs:
   github-release:
-    name: GitHub Release
+    name: GitHub Release (bilingual)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -20,28 +30,63 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Extract changelog for tag
-        id: changelog
+      - name: Extract changelog section (English)
+        id: changelog_en
         run: |
-          VERSION=${GITHUB_REF#refs/tags/v}
+          VERSION="${GITHUB_REF#refs/tags/v}"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
           # Берём секцию из CHANGELOG.md между двумя "## [" строками
-          awk '/^## \[v'"${VERSION}"'\]/{flag=1; next} /^## \[/{flag=0} flag' \
-            CHANGELOG.md > changelog-section.md
-          if [ ! -s changelog-section.md ]; then
+          EN_SECTION=$(awk '/^## \[v'"${VERSION}"'\]/{flag=1; next} /^## \[/{flag=0} flag' CHANGELOG.md || true)
+
+          if [ -z "$EN_SECTION" ]; then
             echo "WARN: no CHANGELOG section found for v${VERSION}, using generic body"
-            echo "Release v${VERSION}" > changelog-section.md
+            EN_SECTION="Release v${VERSION}"
           fi
-          echo "changelog<<EOF" >> "$GITHUB_OUTPUT"
-          cat changelog-section.md >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+
+          # Сохраняем во временный файл
+          printf '%s\n' "$EN_SECTION" > /tmp/en-section.md
+          echo "EN section: $(wc -c < /tmp/en-section.md) chars"
+
+      - name: Verify RU notes file exists
+        run: |
+          if [ ! -f .github/RELEASE_NOTES_RU.md ]; then
+            echo "WARN: .github/RELEASE_NOTES_RU.md not found, using generic RU stub"
+            mkdir -p .github
+            cat > .github/RELEASE_NOTES_RU.md << 'EOF'
+          ### 🇷🇺 Краткое описание
+
+          См. секцию на 🇬🇧 English выше для подробностей.
+          EOF
+          fi
+
+      - name: Build bilingual release body
+        run: |
+          VERSION="${GITHUB_REF#refs/tags/v}"
+          {
+            printf '## 🇬🇧 English\n\n'
+            cat /tmp/en-section.md
+            printf '\n\n---\n\n'
+            printf '## 🇷🇺 Русский\n\n'
+            cat .github/RELEASE_NOTES_RU.md
+            printf '\n\n---\n\n'
+            printf '📚 **Документация / Documentation**: '
+            printf '[README](https://github.com/kprklg/ansible-cobbler) · '
+            printf '[CHANGELOG](https://github.com/kprklg/ansible-cobbler/blob/main/CHANGELOG.md) · '
+            printf '[PREREQUISITES](https://github.com/kprklg/ansible-cobbler/blob/main/PREREQUISITES.md) · '
+            printf '[TROUBLESHOOTING](https://github.com/kprklg/ansible-cobbler/blob/main/TROUBLESHOOTING.md)\n'
+          } > release-body.md
+
+          echo "=== release body ($(wc -c < release-body.md) chars, $(wc -l < release-body.md) lines) ==="
+          head -30 release-body.md
+          echo "..."
+          tail -10 release-body.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          name: v${{ steps.changelog.outputs.version }}
-          body: ${{ steps.changelog.outputs.changelog }}
+          name: v${{ steps.changelog_en.outputs.version }}
+          body_path: release-body.md
           draft: false
-          prerelease: ${{ contains(steps.changelog.outputs.version, '-') }}
-          generate_release_notes: true
+          prerelease: ${{ contains(steps.changelog_en.outputs.version, '-') }}
+          generate_release_notes: false    # не дублировать автогенерацию
