@@ -5,6 +5,9 @@
 [![lint](https://github.com/kprklg/ansible-cobbler/actions/workflows/lint.yml/badge.svg)](../../actions/workflows/lint.yml)
 [![syntax-check](https://github.com/kprklg/ansible-cobbler/actions/workflows/syntax-check.yml/badge.svg)](../../actions/workflows/syntax-check.yml)
 [![aarch64-smoke](https://github.com/kprklg/ansible-cobbler/actions/workflows/aarch64-smoke.yml/badge.svg)](../../actions/workflows/aarch64-smoke.yml)
+[![🇬🇧 English](https://img.shields.io/badge/lang-🇬🇧%20English-blue)](https://github.com/kprklg/ansible-cobbler#ansible-role-cobbler)
+[![🇷🇺 Русский](https://img.shields.io/badge/lang-🇷🇺%20Русский-red)](https://github.com/kprklg/ansible-cobbler#ansible-role-cobbler)
+[![docs](https://img.shields.io/badge/docs-bilingual-🇬🇧%20%2F%20🇷🇺-informational)](../../releases)
 
 > 📚 **Документация:** [README](README.md) (вы здесь) ·
 > [PREREQUISITES](PREREQUISITES.md) ·
@@ -22,6 +25,15 @@
 > 👥 **Участники:** Сообщить о баге через [bug report](../../issues/new?template=bug_report.md),
 > предложить улучшение через [feature request](../../issues/new?template=feature_request.md),
 > или прочитать [Contributor Covenant](CODE_OF_CONDUCT.md) перед PR.
+
+> 🌐 **Двуязычная документация** — каждый .md файл в этом репозитории
+> содержит секции `## 🇬🇧 English` и `## 🇷🇺 Русский`. Выберите свою
+> секцию для чтения. См. [CONTRIBUTING.md](CONTRIBUTING.md) для
+> правил оформления двуязычных PR.
+>
+> **Bilingual docs** — every .md file in this repo has
+> `## 🇬🇧 English` and `## 🇷🇺 Русский` sections. Pick your language.
+> See [CONTRIBUTING.md](CONTRIBUTING.md) for bilingual PR rules.
 
 Устанавливает PXE-провижининг сервер **Cobbler 4.x** на Raspberry Pi (aarch64) или любой x86_64-хост с Debian/Ubuntu.
 
