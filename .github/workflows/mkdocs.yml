@@ -1,22 +1,24 @@
----
 name: mkdocs
 
-# Собирает и деплоит сайт документации (mkdocs-material) на GitHub Pages
-# при push в main. URL: https://kprklg.github.io/ansible-cobbler/
+# Собирает сайт документации (mkdocs) и проверяет, что нет ошибок.
+# Раньше этот workflow деплоил на GitHub Pages через
+# actions/deploy-pages@v4, но Pages не включён в настройках
+# репозитория, что приводило к ошибке:
+#   "Get Pages site failed. ... Not Found"
+# Теперь workflow только собирает документацию и сохраняет артефакт.
+# Включить Pages и deploy: Settings → Pages → Source: "GitHub Actions".
 
-'on':
+on:
   push:
     branches: [main]
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 jobs:
-  mkdocs:
-    name: Build and deploy docs site
+  build:
+    name: Build docs site
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -36,29 +38,17 @@ jobs:
 
       - name: Install mkdocs + material
         run: |
-            python3 -m pip install --upgrade pip
-            python3 -m pip install \
-              mkdocs \
-              mkdocs-material \
-              pymdown-extensions \
-              mdx_truly_sane_lists
+          python -m pip install --upgrade pip
+          python -m pip install \
+            mkdocs \
+            mkdocs-material \
+            pymdown-extensions \
+            mdx_truly_sane_lists
 
-      - name: Build site
+      - name: Build site (strict)
         run: mkdocs build --strict
-
-      - name: Setup Pages
-        uses: actions/configure-pages@v5
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: site
-
-      - name: Deploy to GitHub Pages
-        id: deployment
-        uses: actions/deploy-pages@v4
-
-      - name: Summary
-        if: success()
-        run: |
-          echo "✓ Docs deployed to https://kprklg.github.io/ansible-cobbler/"
