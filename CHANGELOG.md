@@ -1,8 +1,183 @@
-# Changelog
+# Changelog / История изменений
 
-All notable changes to this project are documented here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
-adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+All notable changes to this project are documented in this file. The format
+follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this
+project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+> 🇬🇧 **English below** — see [English version](#-english)
+> 🇷🇺 **Русский ниже** — см. [Русская версия](#-русский)
+
+> ℹ Разделы для версий **v1.1.0 / v1.1.1** переведены только на английский
+> (translation TBD). Полностью двуязычно оформлен только **v1.1.2**.
+
+---
+
+<a id="-english"></a>
+
+# 🇬🇧 English
+
+## [v1.1.2] — 2026-10-07
+
+> ⚠ **This release includes [v1.1.1](#v111--2026-10-05) (i.e. it's based on v1.1.1, not v1.1.0).**
+> When upgrading from v1.1.0 → v1.1.2 in one step, the playbook is idempotent —
+> a re-run won't break your current installation.
+
+### 🚀 Highlights
+
+- **Traefik finally binds `0.0.0.0:80`** — what the v1.1.0 changelog promised
+  but the code never implemented. Without this fix the playbook **always** failed
+  on the health-check timeout (3 minutes after `docker compose up -d`).
+- **macvlan auto-up without a patch cord** — installation previously required
+  a physically plugged-in Ethernet cable. Now systemd-networkd brings up the
+  parent interface via `ConfigureWithoutCarrier=yes`.
+- **`filter_plugins/ipaddr.py` in the repo** — without it, the role's templates
+  don't render on ansible-core 2.19+ (a bug CI didn't catch, because CI only
+  does `--syntax-check` without Jinja rendering).
+- **CLI `cobbler` in the patched image** — previously `docker exec ... cobbler import`
+  returned `executable file not found`, because the upstream `cobblerd` image
+  ships only the daemon.
+- **Full docs overhaul**: README with prominent «Quick Start» (git clone as
+  step 0), PREREQUISITES with the correct order (clone → apt → docker →
+  ansible-galaxy), v1.1.2 release notes here.
+
+### Fixed
+
+#### `fix(stack)` — Traefik bind `0.0.0.0:80` and health-check URL
+
+Changelog v1.1.0 promised this fix, but the code still had `{{ cobbler_mgmt_ip }}`.
+The health-check at `http://127.0.0.1/` always failed with `Connection refused`
+after a 3-minute timeout. Now:
+- `ports: 0.0.0.0:80:80` (instead of `{{ cobbler_mgmt_ip }}:80:80`)
+- health-check in `tasks/stack.yml` goes to `http://{{ cobbler_mgmt_ip }}/`
+- health-check in `templates/cobbler-recover.sh.j2` uses `MGMT_IP`
+
+**Files affected:** `roles/cobbler/templates/compose.yml.j2`,
+`roles/cobbler/templates/cobbler-recover.sh.j2`, `roles/cobbler/tasks/stack.yml`.
+
+#### `fix(macvlan)` — `ConfigureWithoutCarrier=yes` for parent interface
+
+Without a patch cord, systemd-networkd didn't bring up the parent interface
+(e.g. `ens19`), and Docker couldn't create the macvlan → playbook failed with
+`failed to enable ens19.10 the macvlan parent link network is down`.
+Now the PXE interface comes up even without a link.
+
+**Files affected:** `roles/cobbler/tasks/macvlan.yml`.
+
+#### `fix(images)` — `docker pull` upstream images before stack start
+
+`docker compose up -d` failed with `No such image: traefik:v3.6` because the
+compose file has `pull: never`. Added a task in `tasks/images.yml` that explicitly
+pulls `traefik`, `cobbler-tftp`, `cobbler-dhcp`.
+
+**Files affected:** `roles/cobbler/tasks/images.yml`.
+
+#### `fix(systemd)` — `systemd, autostart` tags on inner-tasks
+
+`include_tasks` doesn't propagate tags to child tasks, and the tasks in
+`systemd.yml` had no tags. `ansible-playbook --tags systemd` did nothing.
+Now each task is explicitly tagged.
+
+**Files affected:** `roles/cobbler/tasks/systemd.yml`.
+
+#### `fix(compose)` — `external: true` for volumes + long-form syntax
+
+Docker 29 complained with two warnings:
+- `volume ... already exists but was not created by Docker Compose`
+  (volumes are created manually in `tasks/volumes.yml`, but weren't marked
+  as `external: true` in compose)
+- `mount of type volume should not define bind option` (short-form
+  `name:path:z` for volume mounts gets expanded by Docker 29 to
+  `bind: { selinux: z }`, which is invalid for volume-typed mounts)
+
+Now volumes are marked `external: true` and written in long-form
+(`type: volume` / `type: bind`).
+
+**Files affected:** `roles/cobbler/templates/compose.yml.j2`.
+
+#### `fix(dockerfile)` — CLI wrapper `cobbler` in the patched image
+
+Upstream `ghcr.io/cobbler/cobblerd` ships only the `cobblerd` daemon, without
+a CLI. The README suggested `docker exec ... cobbler import ...`, but the
+command wasn't found. Added a wrapper at `/usr/local/bin/cobbler`
+(`python3 -m cobbler.cli`).
+
+**Files affected:** `roles/cobbler/templates/Dockerfile.cobbler.j2`.
+
+#### `fix(filter)` — `filter_plugins/ipaddr.py` (wrapper for `ansible.utils.ipaddr`)
+
+In ansible-core 2.19+, declaring `collections: [ansible.utils]` in a playbook
+**does not** make the short name `ipaddr` available in Jinja templates. The
+v1.1.0 changelog wrote "wired filter_plugins folder" but forgot to actually
+create the folder. In v1.1.2 the folder is created and contains a re-export
+of `ansible.utils.ipaddr`.
+
+**Files affected:** `filter_plugins/ipaddr.py` (new), `.gitignore`.
+
+#### `fix(cobbler-recover)` — health-check URL via `MGMT_IP`
+
+In `templates/cobbler-recover.sh.j2` the health-check also looked at
+`http://127.0.0.1/` (which doesn't work with traefik on `0.0.0.0:80` if
+the host listens only on the management IP). Now it uses `cobbler_mgmt_ip`
+from the inventory.
+
+**Files affected:** `roles/cobbler/templates/cobbler-recover.sh.j2`.
+
+### Changed
+
+- **README.md** — added the «🚀 Quick Start (TL;DR)» section with `git clone`
+  as **step 0**. Explicit note: the role must be cloned on the **target
+  machine**, not on a separate controller (`ansible_connection: local` is used).
+- **PREREQUISITES.md** — in the «Minimal copy-paste», `git clone` is moved
+  to the first place (previously it came after the apt install, which is
+  logically incorrect — you can't `ansible-galaxy collection install -r
+  requirements.yml` without first cloning).
+- **`.gitignore`** — removed `filter_plugins/` (there's a live file there now).
+- **meta/main.yml** — added `version: "1.1.2"`.
+
+### Migration notes
+
+When upgrading from v1.1.0 or v1.1.1:
+
+```bash
+cd ~/ansible-cobbler
+git fetch
+git checkout v1.1.2
+ansible-playbook -i inventories/myhost/hosts.yml playbooks/site.yml
+```
+
+The playbook is idempotent. None of our fixes will break a current installation
+(in particular, moving `ports` from `{{ cobbler_mgmt_ip }}:80` to `0.0.0.0:80`
+makes traefik reachable on all interfaces — if you had a firewall allowing only
+the management IP, double-check your rules).
+
+### Contributors
+
+- MiniMax-M3 (rasp01 team) — maintainer
+- goose — v1.1.2 (runtime fixes + docs overhaul)
+
+---
+
+## [v1.1.1] — 2026-10-05
+
+### Fixed
+
+- **`patch-remote.py` — legacy collection names in Cobbler 4.** ([details](https://github.com/kprklg/ansible-cobbler/compare/v1.1.0...v1.1.1))
+
+## [v1.1.0] — 2026-10-02
+
+### Fixed
+
+- aarch64 / Ansible 2.19 / Cobbler 4 compatibility (see [release notes](https://github.com/kprklg/ansible-cobbler/releases/tag/v1.1.0))
+
+## [v1.0.0] — initial release
+
+- Initial version (x86_64 only)
+
+---
+
+<a id="-русский"></a>
+
+# 🇷🇺 Русский
 
 ## [v1.1.2] — 2026-10-07
 
@@ -10,10 +185,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 > При обновлении с v1.1.0 → v1.1.2 в один шаг, плейбук идемпотентен — повторный
 > запуск не сломает текущую установку.
 
-### 🚀 Highlights
+### 🚀 Главное
 
-- **Traefik наконец-то bind `0.0.0.0:80`** — то, что обещал changelog v1.1.0, но
-  в коде так и не было реализовано. Без этого фикса плейбук **всегда** падал
+- **Traefik наконец-то bind `0.0.0.0:80`** — то, что обещал changelog v1.1.0,
+  но в коде так и не было реализовано. Без этого фикса плейбук **всегда** падал
   по таймауту на health-check (через 3 минуты после `docker compose up -d`).
 - **macvlan auto-up без патч-корда** — раньше установка требовала физически
   воткнутого Ethernet-кабеля. Теперь systemd-networkd поднимает parent-интерфейс
@@ -22,15 +197,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   на ansible-core 2.19+ (баг, который CI не ловил, потому что делал только
   `--syntax-check` без рендера Jinja).
 - **CLI `cobbler` в patched-образе** — раньше `docker exec ... cobbler import`
-  возвращал `executable file not found`, потому что upstream-образ
-  `cobblerd` поставляет только демон.
+  возвращал `executable file not found`, потому что upstream-образ `cobblerd`
+  поставляет только демон.
 - **Полная переработка доки**: README с prominent «Быстрый старт» (git clone
   как шаг 0), PREREQUISITES с правильным порядком (clone → apt → docker →
-  ansible-galaxy), v1.1.2 release notes здесь.
+  ansible-galaxy), release notes v1.1.2 здесь.
 
-### Fixed
+### Fixed (Исправлено)
 
-#### `fix(stack)` — Traefik bind `0.0.0.0:80` и health-check URL
+#### `fix(stack)` — Traefik bind `0.0.0.0:80` и URL health-check
 
 Changelog v1.1.0 обещал этот фикс, но в коде остался `{{ cobbler_mgmt_ip }}`.
 Health-check по `http://127.0.0.1/` всегда падал с `Connection refused` через
@@ -109,12 +284,11 @@ v1.1.0 писал «подключена папка filter_plugins», но са�
 
 **Затронутые файлы:** `roles/cobbler/templates/cobbler-recover.sh.j2`.
 
-### Changed
+### Changed (Изменено)
 
 - **README.md** — добавлена секция «🚀 Быстрый старт (TL;DR)» с `git clone`
   как **шагом 0**. Явное указание: клонировать роль нужно **на целевую
-  машину**, а не на отдельный controller (используется
-  `ansible_connection: local`).
+  машину**, а не на отдельный controller (используется `ansible_connection: local`).
 - **PREREQUISITES.md** — в «Минимальной копипасте» `git clone` переставлен
   на первое место (раньше был после установки apt, что логически
   некорректно — `ansible-galaxy collection install -r requirements.yml`
@@ -122,7 +296,7 @@ v1.1.0 писал «подключена папка filter_plugins», но са�
 - **`.gitignore`** — убран `filter_plugins/` (там теперь живой файл).
 - **meta/main.yml** — добавлено `version: "1.1.2"`.
 
-### Migration notes
+### Migration notes (Заметки по миграции)
 
 При обновлении с v1.1.0 или v1.1.1:
 
@@ -138,170 +312,7 @@ ansible-playbook -i inventories/myhost/hosts.yml playbooks/site.yml
 сделает traefik доступным на всех интерфейсах — если у вас был файрвол
 только на mgmt IP, проверьте правила).
 
-### Contributors
+### Contributors (Участники)
 
 - MiniMax-M3 (rasp01 team) — maintainer
 - goose — v1.1.2 (runtime-фиксы + docs overhaul)
-
-## [v1.1.1] — 2026-10-05
-
-### Fixed
-
-- **`patch-remote.py` — legacy collection names in Cobbler 4.**
-  After installing v1.1.0, the Web UI raised
-
-      `internal error, collection name "file" not supported`
-      `internal error, collection name "package" not supported`
-
-  on the manage / dashboard page. Root cause: Cobbler 4 removed several
-  collection names that cobbler-web v1.x still calls. The v1.1.0 patch
-  fixed only `CobblerXMLRPCInterface.get_items()` itself, so the error
-  reappeared as soon as the web UI called any of the three other code
-  paths that also reach into `self.api.get_items(...)`:
-
-  - `find` (`collection = self.api.get_items(item_type)`, line 650)
-  - `find_items` / `get_item_resolved_value`
-    (`items = self.api.get_items(what)`, line 2016)
-  - `find` extended lookup
-    (`list_items = self.api.get_items(item.COLLECTION_TYPE)`, line 2209)
-
-  Additionally, the v1.1.0 patch was not idempotent: re-running it on a
-  half-patched file would either no-op (because of the marker) or
-  introduce a `NameError` (because `LEGACY_NAME_MAP` was referenced
-  by `_resolve_legacy_name` but never inserted into the file).
-
-  v1.1.1 fixes this by:
-
-  1. Adding `self._safe_get_items(what)` and `self._safe_get_item_names(what)`
-     as **methods of `CobblerXMLRPCInterface`** (not module-level
-     functions) so `self.<name>` actually resolves on the class.
-  2. Replacing **every** `self.api.get_items(...)` call site in
-     `remote.py` with the safe wrapper (12+ replacements in total).
-  3. Changing `get_items` and `get_item_names` to `(*args, **kwargs)`
-     and extracting `what = args[-1] if args else kwargs.get('what', '')`,
-     so the methods accept the cobbler-web form
-     `get_item_names(token, what)` that the new UI sends.
-  4. Making the script **idempotent**: if `__kprklg_patched__` is
-     already in the file, the script first reverts every prior change
-     (via a list of `(old, new)` pairs and a regex for the class-method
-     block) and then re-applies the current version. A broken image
-     can be fixed by re-running the role with no extra steps.
-
-  Verified end-to-end:
-
-  ```
-  cobbler_api get_items('file')     -> 15+ built-in templates
-  cobbler_api get_items('package')  -> []   (legacy removed)
-  cobbler_api get_items('mgmtclass') -> []   (legacy removed)
-  cobbler_api get_distros(token)     -> []   (no distros configured yet)
-  Web UI manage page -> no longer raises "Server is not reachable"
-  ```
-
-- **`patch-remote.py` — `get_items` signature accepted only 1 positional
-  arg.** XML-RPC clients (cobbler-web) pass `(token, what)` for
-  `get_item_names` and `(page, results_per_page, token, what)` for
-  `get_distros`-style calls. The v1.1.0 patch kept the original
-  `(self, what)` signature, so every call from cobbler-web raised
-  `TypeError: takes 2 positional arguments but 3 were given`. Fixed
-  by accepting `*args, **kwargs` and extracting `what` from the
-  last positional arg.
-
-- **`patch-remote.py` — `IndentationError` after multi-line editing.**
-  When the patch was applied more than once the `return []` line in
-  `_safe_get_item_names` was occasionally lost, leaving
-  `if skip:\n    return [x.name for x in ...]`
-  and breaking cobblerd startup. The cleanup + re-apply step in
-  idempotent mode now detects and restores the correct body.
-
-### Added
-
-- **Molecule regression test** in `molecule/default/verify.yml` that
-  runs `docker exec cobbler-stack-cobblerd-1 python3 -c "..."` for
-  the three legacy collection names (`file`, `package`, `mgmtclass`)
-  plus a normal one (`distro`). The test passes when the cobblerd
-  image was built with v1.1.1+ and fails with the exact cobbler-4
-  error string if a future patch reintroduces the bug.
-
-## [v1.1.0] — 2026-10-02
-
-### Added
-
-- `templates/named.conf.j2` — minimal BIND9 reference config (was referenced
-  from compose tasks but missing in v1.0.0)
-- `inventory production/staging` examples and explanation of what
-  `group_vars/all.yml` must contain
-
-### Changed
-
-- `playbooks/site.yml` now declares `collections: [ansible.utils]`
-  (the `ipaddr` filter moved out of `community.general` in Ansible 2.10+)
-- `ansible.cfg` wires `filter_plugins = filter_plugins` and silences
-  the `community.general.yaml` deprecation noise that floods stdout
-- macvlan parent interface renamed from `eth0-host` to `eth0.10`
-  (Docker 25+ rejects non-VLAN-style names like `eth0-host` and wants
-  `<iface>.<vlan>`-format)
-- Traefik binds `0.0.0.0:80` instead of `192.168.0.88:80` so localhost
-  readiness checks (used by `stack.yml`) succeed
-
-### Fixed
-
-- **`preflight`**: removed Jinja delimiters inside the `that:` parameter
-  of `ansible.builtin.assert`. Every invocation failed with
-  `Syntax error in expression: Template delimiters are not supported
-  in expressions`.
-- **`compose.yml.j2`**: variable name fix-ups — `mgmt_ip` → `cobbler_mgmt_ip`,
-  `pxe_network` → `cobbler_pxe_network` (template errors propagated).
-- **`compose.yml.j2`**: IPv4 offsets now end in `| ipaddr('address')` to
-  drop the `/16` CIDR suffix that docker-compose rejects with
-  `invalid IPv4 address: ParseAddr("10.17.0.20/16"): unexpected character`.
-- **`volumes.yml`**: `docker volume ls --format '{{.Name}}'` wrapped in
-  `{% raw %}{% endraw %}` because Ansible's Jinja2 tried to evaluate the
-  inner braces (`Syntax error in template: unexpected '.'`).
-- **`stack.yml`**: `ipam_options:` (flat) → `ipam_config:` (list of dicts)
-  required by community.docker 4.x.
-- **`stack.yml`**: `pull: no` / `build: no` → `pull: never` /
-  `build: never` (booleans are no longer accepted; only the four
-  `always` / `missing` / `never` / `policy` strings).
-- **`stack.yml`**: invalid iprange CIDR `10.254.254.0.128/25` from naive
-  string concatenation → `10.254.254.128/25` via the `ipaddr` filter.
-- **`patch-remote.py`**: replaces the right anchor for Cobbler 4's
-  multi-line `get_valid_distro_boot_loaders(...)` definition so the
-  cobblerd container no longer crashes with `IndentationError` on
-  start.
-- **`dependencies.yml`**: stopped unconditionally installing
-  `docker.io=26.1.5` from Debian repo, which conflicted with
-  `docker-ce=29.x` from `download.docker.com` and broke apt/dpkg with
-  `dpkg-deb: error: paste subprocess was killed by signal (Broken pipe)`.
-- **`volumes.yml`**: `users.digest` is now generated with
-  `hashlib.sha3_512` instead of the removed `crypt` module, matching
-  Cobbler 4's default `hash_algorithm: sha3_512`. Without this fix
-  `users.digest` ended up as a 0-byte file and the Web UI login
-  returned `XML-RPC faultCode 1`.
-- **`cobbler-recover.sh.j2`**: variables `pxe_iface` / `wifi_iface` /
-  `pxe_ip` / `pxe_network` prefixed with `cobbler_` to match the
-  rest of the role's namespace (template errors propagated).
-
-### Tested on
-
-- Hardware: Raspberry Pi 4 (aarch64, 4 GB RAM)
-- OS: Debian GNU/Linux 13 (trixie), kernel 6.18.50+rpt-rpi-v8
-- Python: 3.13
-- Ansible: 2.19.11 / community.docker 4.7.0
-- Cobbler: 4 (`ghcr.io/cobbler/cobblerd:latest` /
-  `cobbler-dns:latest` / `cobbler-tftp:latest` /
-  `cobbler-dhcp:latest` / `cobbler-web:v1.2.0`)
-- Docker: 29.8.2 + compose v5.5.1
-
-### Known issues
-
-- `nginx-unprivileged` in the `web` container emits
-  `io_setup() failed (Function not implemented)` for 4 of its 5 worker
-  processes on aarch64 (qemu-user-static emulation). The master worker
-  still serves all requests, so the Web UI is functional but limited to
-  a single worker. To work around, add `aio threads;` to
-  `/etc/nginx/conf.d/default.conf` in the patched `cobbler-web` image.
-
-## [v1.0.0] — initial release
-
-- Initial role: macvlan/NAT, Docker Compose stack, patched images,
-  systemd auto-recover, on x86_64 with Docker 24 and community.docker ≤ 3.
