@@ -16,7 +16,7 @@ name: hooks
 # (.pre-commit-config.yaml сохранён), но в CI мы напрямую
 # запускаем каждую проверку.
 
-on:
+'on':
   push:
     branches: [main]
     tags: ['v*']
