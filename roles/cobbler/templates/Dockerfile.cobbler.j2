@@ -17,3 +17,11 @@ RUN python3 /tmp/patch-remote.py \
  && python3 /tmp/patch-manager.py \
  && find /usr/lib/python3.13/site-packages/cobbler -name '__pycache__' -type d -exec rm -rf {} + \
  && rm -f /tmp/patch-remote.py /tmp/patch-manager.py
+
+# Добавляем CLI-обёртку `cobbler` для удобства из хоста через
+# `docker exec ... cobbler <command>`. Upstream-образ cobblerd
+# поставляет только демон `cobblerd`, а CLI (`cobbler import`,
+# `cobbler distro add`, ...) предоставляется пакетом, который
+# не входит в upstream-образ. Делаем явный entrypoint.
+RUN printf '#!/bin/sh\nexec python3 -m cobbler.cli "$@"\n' > /usr/local/bin/cobbler \
+ && chmod +x /usr/local/bin/cobbler

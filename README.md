@@ -1,6 +1,6 @@
 # Ansible Role: cobbler
 
-[![Version v1.1.0](https://img.shields.io/badge/version-v1.1.0-brightgreen)](../../releases/tag/v1.1.0)
+[![Version v1.1.2](https://img.shields.io/badge/version-v1.1.2-brightgreen)](../../releases/tag/v1.1.2)
 [![License MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![lint](https://github.com/kprklg/ansible-cobbler/actions/workflows/lint.yml/badge.svg)](../../actions/workflows/lint.yml)
 [![syntax-check](https://github.com/kprklg/ansible-cobbler/actions/workflows/syntax-check.yml/badge.svg)](../../actions/workflows/syntax-check.yml)
@@ -38,6 +38,82 @@
 Устанавливает PXE-провижининг сервер **Cobbler 4.x** на Raspberry Pi (aarch64) или любой x86_64-хост с Debian/Ubuntu.
 
 > Роль **полностью автономная**: все артефакты (`compose.yml`, `Dockerfile`'ы, патчи, webroot) генерируются из upstream-образов `ghcr.io/cobbler/*`. Бэкапы и предварительно подготовленные файлы не требуются.
+
+---
+
+## 🚀 Быстрый старт (TL;DR)
+
+**Шаг 0 — склонировать роль НА ЦЕЛЕВУЮ МАШИНУ** (туда, где будет крутиться Cobbler):
+
+```bash
+cd ~
+git clone https://github.com/kprklg/ansible-cobbler.git
+cd ansible-cobbler
+git checkout v1.1.2
+```
+
+> 💡 Отдельный Ansible-controller не нужен: роль использует `ansible_connection: local`,
+> плейбук запускается прямо с целевого хоста. Все дальнейшие команды — из
+> корня склонированного репозитория.
+
+**Шаг 1 — установить системные пакеты** (полный список — в [PREREQUISITES.md](PREREQUISITES.md)):
+
+```bash
+apt-get update && apt-get install -y ca-certificates curl gnupg git \
+  ansible ansible-core qemu-user-static binfmt-support \
+  iptables-persistent netfilter-persistent python3 python3-yaml python3-passlib
+# preseed для iptables-persistent
+echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections
+echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
+# Docker из официального репо (НЕ docker.io из Debian)
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+chmod a+r /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" > /etc/apt/sources.list.d/docker.list
+apt-get update && apt-get install -y docker-ce docker-ce-rootless-extras docker-buildx-plugin docker-compose-plugin
+systemctl enable --now docker
+# Ansible-коллекции (теперь — после клонирования)
+ansible-galaxy collection install -r requirements.yml
+```
+
+**Шаг 2 — создать инвентарь** (подставьте свои IP/интерфейсы):
+
+```bash
+mkdir -p inventories/myhost/group_vars
+cat > inventories/myhost/hosts.yml <<'EOF'
+---
+all:
+  children:
+    cobbler:
+      hosts:
+        rasp01:
+          ansible_host: 192.168.0.88
+          ansible_connection: local
+          ansible_become: yes
+EOF
+cat > inventories/myhost/group_vars/all.yml <<'EOF'
+---
+cobbler_mgmt_ip: "192.168.0.88"
+cobbler_pxe_iface: "eth0"
+cobbler_wifi_iface: "wlan0"
+cobbler_pxe_network: "10.254.254.0/24"
+cobbler_pxe_ip: "10.254.254.1/24"
+cobbler_default_user: "cobbler"
+cobbler_default_password: "cobbler"
+EOF
+```
+
+**Шаг 3 — запустить установку:**
+
+```bash
+ansible-playbook -i inventories/myhost/hosts.yml playbooks/site.yml
+```
+
+⏱ На x86_64: **~5 минут**, на RPi (qemu-эмуляция): **~25 минут**.
+
+После установки Web UI доступен на `http://<cobbler_mgmt_ip>/` (логин `cobbler` / пароль `cobbler`).
+
+> 📚 **Подробная пошаговая инструкция** — в [PREREQUISITES.md](PREREQUISITES.md).
 
 ---
 
@@ -297,32 +373,17 @@ ansible-playbook -i inventories/myhost/hosts.yml playbooks/site.yml
 
 ---
 
-## Changelog
+## 📝 Changelog
 
-### v1.1.0 — aarch64 / Ansible 2.19 / Cobbler 4 compatibility
+Полная история релизов — в **[CHANGELOG.md](CHANGELOG.md)** и в [**GitHub Releases**](../../releases).
+Дублировать changelog в README — плохой тон, поэтому здесь только самое важное:
 
-- `fix(preflight)`: убраны Jinja-разделители в условии `assert`
-- `fix(macvlan)`: переименование `eth0-host` → `eth0.10` (требование Docker 25+ к именам VLAN)
-- `fix(stack)`: миграция на `ipam_config` (community.docker 4.x)
-- `fix(stack)`: `pull: no` / `build: no` → `pull: never` / `build: never`
-- `fix(stack)`: исправлена CIDR-нотация для iprange
-- `fix(stack)`: Traefik bind `0.0.0.0:80` (для local-приложений и health-check)
-- `fix(compose)`: добавлен отсутствующий `templates/named.conf.j2`
-- `fix(compose)`: переменные `mgmt_ip` / `pxe_network` → `cobbler_mgmt_ip` / `cobbler_pxe_network`
-- `fix(compose)`: `ipaddr('+N')` → `| ipaddr('address')` для IPv4 без маски
-- `fix(volumes)`: Go-template `{{.Name}}` экранирован в `{% raw %}`
-- `fix(patch-remote)`: учтена многострочная сигнатура `get_valid_distro_boot_loaders` в Cobbler 4
-- `fix(deps)`: убрана принудительная установка `docker.io` поверх `docker-ce`
-- `fix(volumes)`: генерация `users.digest` через `hashlib.sha3_512` (Cobbler 4 по умолчанию)
-- `fix(cobbler-recover)`: префикс `cobbler_` у переменных шаблона
-- `chore(playbook)`: объявлена коллекция `ansible.utils` для фильтра `ipaddr`
-- `chore(ansible.cfg)`: подключена папка `filter_plugins`
-
-См. подробности: [v1.1.0 release](../../releases/tag/v1.1.0) или `git log b756cd5..v1.1.0`.
-
-### v1.0.0
-
-Начальная версия. Работала только на x86_64 с Docker 24+ и старыми версиями community.docker.
+| Версия | Что | Когда |
+|---|---|---|
+| **v1.1.2** | 9 runtime-фиксов (traefik bind, macvlan, docker pull, systemd, …) + docs overhaul | 2026-10-07 |
+| v1.1.1 | `patch-remote.py` под Cobbler 4 (legacy collection names) | 2026-10-05 |
+| v1.1.0 | aarch64 / Ansible 2.19 / Cobbler 4 compatibility | 2026-10-02 |
+| v1.0.0 | Начальная версия (только x86_64) | — |
 
 ---
 

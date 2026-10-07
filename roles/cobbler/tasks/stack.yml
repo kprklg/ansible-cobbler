@@ -35,7 +35,7 @@
 
 - name: "Ожидание готовности Web UI"
   ansible.builtin.uri:
-    url: "http://127.0.0.1/"
+    url: "http://{{ cobbler_mgmt_ip }}/"
     status_code: 200,302
     timeout: 5
   register: web_ui_check
@@ -45,7 +45,7 @@
 
 - name: "Ожидание готовности /cobbler_api (XML-RPC)"
   ansible.builtin.uri:
-    url: "http://127.0.0.1/cobbler_api"
+    url: "http://{{ cobbler_mgmt_ip }}/cobbler_api"
     method: POST
     headers:
       Content-Type: "text/xml"
