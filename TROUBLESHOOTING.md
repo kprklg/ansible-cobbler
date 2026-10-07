@@ -1,8 +1,169 @@
-# Troubleshooting
+# Troubleshooting / Решение проблем
 
-Частые проблемы при запуске роли и способы их решения.
+> 🇬🇧 **English below** — see [English version](#-english)
+> 🇷🇺 **Русский ниже** — см. [Русская версия](#-русский)
 
 ---
+
+<a id="-english"></a>
+
+# 🇬🇧 English
+
+Common problems when running the role and how to solve them.
+
+## Errors when running the playbook
+
+### `Syntax error in expression: Template delimiters are not supported in expressions`
+
+**Cause:** outdated Ansible (pre-2.14) that doesn't fully support
+`{% raw %}` blocks, or syntax errors in the role's templates after a
+local edit.
+
+**Solution:** check Ansible version (`ansible --version`), upgrade to
+≥ 2.14. If you edited templates locally — re-run the role with the
+original files.
+
+### `No filter named 'ipaddr'`
+
+**Cause:** in ansible-core 2.19+, declaring `collections: [ansible.utils]`
+in a playbook does not make the short name `ipaddr` available in
+Jinja templates.
+
+**Solution:** make sure `filter_plugins/ipaddr.py` exists in the
+repository. In v1.1.2 it has been added.
+
+```bash
+ls filter_plugins/ipaddr.py
+# Must exist
+```
+
+### `failed to enable <iface>.10 the macvlan parent link network is down`
+
+**Cause:** the parent network interface (the one in `cobbler_pxe_iface`)
+is not brought up (DOWN) — cable is not plugged in, or systemd-networkd
+isn't bringing it up automatically.
+
+**Solution (temporary):** bring the interface up manually:
+
+```bash
+sudo ip link set <cobbler_pxe_iface> up
+```
+
+**Solution (permanent):** in v1.1.2, `ConfigureWithoutCarrier=yes` is set
+for the parent interface in `/etc/systemd/network/10-<iface>.network`.
+If you're using v1.1.0/v1.1.1, add this line manually:
+
+```ini
+# /etc/systemd/network/10-ens19.network
+[Match]
+Name=ens19
+
+[Network]
+IPv6AcceptRA=no
+ConfigureWithoutCarrier=yes   # ← add
+```
+
+### `No such image: traefik:v3.6`
+
+**Cause:** the `compose.yml` has `pull: never`, but the image hasn't
+been pulled.
+
+**Manual solution (v1.1.0/v1.1.1):**
+
+```bash
+docker pull traefik:v3.6
+docker pull ghcr.io/cobbler/cobbler-tftp:latest
+docker pull ghcr.io/cobbler/cobbler-dhcp:latest
+```
+
+**Solution in v1.1.2:** the role itself does `docker pull` before
+starting the stack.
+
+### `Connection refused` on `http://127.0.0.1:80` (when checking Web UI)
+
+**Cause:** in v1.1.0/v1.1.1, traefik is bound only to `{{ cobbler_mgmt_ip }}`,
+not to `127.0.0.1`. The health-check in the playbook checks `127.0.0.1`
+and fails.
+
+**Solution in v1.1.2:** traefik binds `0.0.0.0:80`, health-check goes
+to `http://{{ cobbler_mgmt_ip }}/`. Upgrade to v1.1.2.
+
+### `--tags systemd` does nothing
+
+**Cause:** in v1.1.0/v1.1.1, `include_tasks` doesn't propagate tags to
+inner-tasks, and the tasks themselves have no tags.
+
+**Solution in v1.1.2:** inner-tasks in `tasks/systemd.yml` are explicitly
+marked `tags: [systemd, autostart]`.
+
+### `volume ... already exists but was not created by Docker Compose`
+
+**Cause:** in v1.1.0/v1.1.1, volumes are created manually via
+`community.docker.docker_volume`, but in `compose.yml` they're not
+marked as `external: true`.
+
+**Solution in v1.1.2:** all volumes in `compose.yml` are marked
+`external: true`.
+
+### `mount of type volume should not define bind option`
+
+**Cause:** short-form `name:path:z` for volume mounts gets expanded by
+Docker 29 into `bind: { selinux: z }` for a volume-typed mount, which
+is what Docker complains about.
+
+**Solution in v1.1.2:** volumes are written in long-form
+(`type: volume` / `type: bind`).
+
+### `cobbler import` not found in the container
+
+**Cause:** the upstream `cobblerd` image ships only the daemon, without
+a CLI.
+
+**Solution in v1.1.2:** a wrapper `/usr/local/bin/cobbler`
+(`python3 -m cobbler.cli`) is added in `Dockerfile.cobbler.j2`.
+
+### Web UI returns 502 Bad Gateway
+
+**Cause:** the `web` container (nginx) hasn't started yet, or traefik
+can't see it in the network.
+
+**Solution:**
+
+```bash
+docker ps --filter name=cobbler-stack
+docker logs cobbler-stack-web-1
+docker logs cobbler-stack-traefik-1
+```
+
+### Can't see containers in `docker ps`
+
+**Cause:** Docker is not installed or not running.
+
+**Solution:**
+
+```bash
+systemctl status docker
+sudo systemctl enable --now docker
+```
+
+### `Permission denied` on `docker ps` (without sudo)
+
+**Cause:** the current user is not in the `docker` group.
+
+**Solution:**
+
+```bash
+sudo usermod -aG docker $USER
+# then re-login
+```
+
+---
+
+<a id="-русский"></a>
+
+# 🇷🇺 Русский
+
+Частые проблемы при запуске роли и способы их решения.
 
 ## Ошибки при запуске плейбука
 

@@ -1,14 +1,275 @@
-# Подготовка хоста (Prerequisites)
+# Подготовка хоста (Prerequisites) / Host Preparation
 
-Прежде чем запускать `ansible-playbook`, нужно вручную подготовить хост.
-Этот документ описывает **что и зачем** нужно установить, чтобы роль
-не упала на середине установки.
+> 🇬🇧 **English below** — see [English version](#-english)
+> 🇷🇺 **Русский ниже** — см. [Русская версия](#-русский)
 
 > ⏱ Полная подготовка занимает ~10–15 минут. Сама установка Cobbler
 > занимает ещё ~25 минут на Raspberry Pi (с qemu-эмуляцией x86_64)
 > и ~5 минут на x86_64.
+>
+> ⏱ Full preparation takes ~10–15 minutes. Cobbler installation itself takes
+> another ~25 minutes on Raspberry Pi (with qemu x86_64 emulation) and
+> ~5 minutes on x86_64.
 
 ---
+
+<a id="-english"></a>
+
+# 🇬🇧 English
+
+Before running `ansible-playbook`, the host must be prepared manually.
+This document describes **what and why** needs to be installed so the
+role doesn't fail mid-install.
+
+## 1. System requirements
+
+### Minimum
+
+| Parameter | Minimum |
+|---|---|
+| **Platform** | Debian 12 / Ubuntu 22.04 |
+| **Architecture** | aarch64 / x86_64 |
+| **RAM** | 2 GB |
+| **Free space** | 5 GB |
+| **Ansible** | ≥ 2.14 |
+| **Python** | ≥ 3.11 |
+
+### Recommended
+
+| Parameter | Recommended |
+|---|---|
+| **Platform** | Debian 13 / Ubuntu 24.04 |
+| **RAM** | 4 GB (to build 3 images in parallel) |
+| **Free space** | 10 GB (Docker images + volumes + webroot) |
+| **Ansible** | 2.19+ |
+| **`community.docker` collection** | ≥ 4.7 |
+
+### Network (required)
+
+- **2 physical interfaces** (or 1 phys + 1 Wi-Fi):
+  - one with **Internet** (for apt, image downloads, web admin traffic)
+  - one for **PXE** (patch cord to a switch goes here)
+- The host must have a **static or DHCP-reserved** IP for the Web UI
+  (`cobbler_mgmt_ip`)
+- Internet egress (apt, ghcr.io)
+
+### On aarch64 (additional)
+
+- `qemu-user-static` + `binfmt-support` — for x86_64 emulation (apt)
+- working `/proc/sys/fs/binfmt_misc/qemu-x86_64` (enabled)
+
+## 2. Installing system packages
+
+### 2.1 Base dependencies
+
+```bash
+apt-get update
+apt-get install -y \
+  ca-certificates curl gnupg git \
+  ansible ansible-core \
+  qemu-user-static binfmt-support \
+  iptables-persistent netfilter-persistent \
+  python3 python3-yaml python3-passlib
+```
+
+### 2.2 Preseed for iptables-persistent
+
+By default `iptables-persistent` asks interactively whether to save IPv4/IPv6
+rules. To prevent the Ansible run from hanging, preseed in advance:
+
+```bash
+echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections
+echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
+```
+
+### 2.3 Installing Docker from the **official** repository
+
+> ⚠ **Don't install `docker.io` from the Debian repository!**
+> It conflicts with `docker-ce` from `download.docker.com` (apt-persistent).
+> Also, the version 26.1 in Debian is outdated.
+
+```bash
+# Docker GPG key
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/debian/gpg \
+  | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+chmod a+r /etc/apt/keyrings/docker.gpg
+
+# Repository
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+  > /etc/apt/sources.list.d/docker.list
+
+# Install
+apt-get update
+apt-get install -y docker-ce docker-ce-rootless-extras \
+                   docker-buildx-plugin docker-compose-plugin
+systemctl enable --now docker
+```
+
+### 2.4 On aarch64 — verify emulation
+
+```bash
+# Should print: enabled
+ls /proc/sys/fs/binfmt_misc/qemu-x86_64 && \
+  head -1 /proc/sys/fs/binfmt_misc/qemu-x86_64
+
+# Test x86_64 emulation in Docker
+docker run --rm --platform linux/amd64 alpine:3.20 uname -m
+# Should return: x86_64
+```
+
+### 2.5 Install Ansible collections
+
+From the cloned repo root:
+
+```bash
+ansible-galaxy collection install -r requirements.yml
+```
+
+Installs:
+- `community.docker` (≥ 4.7) — for `docker_compose_v2`
+- `ansible.posix` — for `sysctl`
+- `ansible.utils` — for the `ipaddr` filter (used in templates)
+
+## 3. Creating the inventory and variables
+
+The role **does not know** your IP addresses or interface names — you must
+set them explicitly via `group_vars`.
+
+### 3.1 Directory structure
+
+```bash
+mkdir -p inventories/myhost/group_vars
+```
+
+### 3.2 `inventories/myhost/hosts.yml`
+
+```yaml
+---
+all:
+  children:
+    cobbler:
+      hosts:
+        rasp01:                                  # any name
+          ansible_host: 192.168.0.88             # IP for the admin UI
+          ansible_connection: local              # or ssh://...
+          ansible_become: yes
+```
+
+> 💡 If your Ansible controller is separate from the target host, replace
+> `ansible_connection: local` with `ansible_user@host` and add
+> `ansible_user: <username>`.
+
+### 3.3 `inventories/myhost/group_vars/all.yml`
+
+```yaml
+---
+# === Network ===
+cobbler_mgmt_ip: "192.168.0.88"                  # IP for Web UI
+cobbler_pxe_iface: "eth0"                       # PXE interface
+cobbler_wifi_iface: "wlan0"                     # Internet interface (NAT)
+cobbler_pxe_network: "10.254.254.0/24"          # PXE clients subnet
+cobbler_pxe_ip: "10.254.254.1/24"               # macvlan IP
+
+# === Authentication ===
+cobbler_default_user: "cobbler"
+cobbler_default_password: "cobbler"
+```
+
+## 4. Readiness check
+
+Before running the playbook, verify:
+
+```bash
+# Tool versions
+git --version                                    # ≥ 2.0
+ansible --version | head -1                      # ≥ 2.14
+docker --version                                 # ≥ 20.10
+docker compose version                           # ≥ 2.0
+python3 -c "import hashlib, passlib.hash"        # OK
+
+# On aarch64: emulation works
+docker run --rm --platform linux/amd64 alpine:3.20 uname -m
+# → x86_64
+
+# Docker daemon is running
+systemctl is-active docker
+# → active
+
+# Permissions: can run docker without sudo (or via become)
+docker ps
+```
+
+## 5. Minimal copy-paste
+
+```bash
+# === 1. Clone the role (on the target machine) ===
+cd ~
+git clone https://github.com/kprklg/ansible-cobbler.git
+cd ansible-cobbler
+git checkout v1.1.2
+
+# === 2. Install system packages ===
+apt-get update
+apt-get install -y ca-certificates curl gnupg git \
+  ansible ansible-core qemu-user-static binfmt-support \
+  iptables-persistent netfilter-persistent python3 python3-yaml python3-passlib
+
+echo iptables-persistent iptables-persistent/autosave_v4 boolean true | debconf-set-selections
+echo iptables-persistent iptables-persistent/autosave_v6 boolean true | debconf-set-selections
+
+# === 3. Docker from the official repository ===
+install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/debian/gpg \
+  | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+chmod a+r /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/debian $(. /etc/os-release && echo "$VERSION_CODENAME") stable" \
+  > /etc/apt/sources.list.d/docker.list
+apt-get update && apt-get install -y docker-ce docker-ce-rootless-extras docker-buildx-plugin docker-compose-plugin
+systemctl enable --now docker
+
+# === 4. Ansible collections (from requirements.yml in the cloned repo) ===
+ansible-galaxy collection install -r requirements.yml
+```
+
+## 6. After installation
+
+```bash
+# Web UI
+open http://<cobbler_mgmt_ip>/
+
+# Container status
+docker ps --filter name=cobbler-stack
+
+# Logs
+cd /opt/cobbler-stack && docker compose logs -f
+
+# Import a distro (ISO must be mounted at /mnt)
+docker exec -it cobbler-stack-cobblerd-1 cobbler import \
+  --path=/mnt --name=ubuntu-22.04 --arch=x86_64
+```
+
+## 7. Uninstalling
+
+```bash
+ansible-playbook -i inventories/myhost/hosts.yml playbooks/uninstall.yml
+```
+
+Removes the Docker stack, volumes, macvlan network, systemd unit. Configs
+in `/etc/systemd/network/` are **not** removed automatically — clean up
+manually if needed.
+
+---
+
+<a id="-русский"></a>
+
+# 🇷🇺 Русский
+
+Прежде чем запускать `ansible-playbook`, нужно вручную подготовить хост.
+Этот документ описывает **что и зачем** нужно установить, чтобы роль
+не упала на середине установки.
 
 ## 1. Системные требования
 
