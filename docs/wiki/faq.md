@@ -42,7 +42,7 @@ docker exec -it cobbler-stack-cobblerd-1 cobbler import \
 
 ### Не работает логин (`faultCode 1`)
 
-Скорее всего, `users.digest` пустой. См. [Troubleshooting → cobblerd](../troubleshooting/common.md#cobblerd).
+Скорее всего, `users.digest` пустой. См. [Troubleshooting → cobblerd](troubleshooting/common.md#cobblerd).
 
 ### Как пересобрать образы?
 

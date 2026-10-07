@@ -10,6 +10,7 @@ site_url: https://kprklg.github.io/ansible-cobbler/
 repo_name: kprklg/ansible-cobbler
 repo_url: https://github.com/kprklg/ansible-cobbler
 edit_uri: edit/main/docs/wiki/
+docs_dir: docs/wiki
 
 copyright: Copyright &copy; 2026 rasp01 team — MIT License
 

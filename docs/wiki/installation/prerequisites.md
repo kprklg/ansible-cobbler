@@ -76,7 +76,7 @@ curl -fsSL https://get.docker.com | sudo sh
 sudo usermod -aG docker $USER
 ```
 
-## Шаг 4: Проверить эмуляцию (только на aarch64)
+## Шаг 4: Проверить эмуляцию (только на aarch64) {#шаг-4-проверить-эмуляцию-только-на-aarch64}
 
 На Raspberry Pi qemu-эмуляция нужна для запуска x86_64 Docker-образов.
 
