@@ -11,7 +11,7 @@
       community.docker.docker_compose_v2:
         project_src: "{{ cobbler_workdir }}"
         state: absent
-      ignore_errors: true
+      failed_when: false
 
     - name: "Удаление Docker volumes"
       ansible.builtin.command: "docker volume rm {{ cobbler_workdir | basename }}_{{ item }}"

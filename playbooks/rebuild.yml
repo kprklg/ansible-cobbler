@@ -16,7 +16,7 @@
         project_src: "{{ cobbler_workdir }}"
         state: present
         restarted: true
-      ignore_errors: true
+      failed_when: false
 
     - name: "Готово"
       ansible.builtin.debug:

@@ -20,3 +20,8 @@ collections:
   - name: community.docker
     source: https://galaxy.ansible.com
     # version: 6.0.0           # можно зафиксировать версию
+
+  # Коллекция для sysctl (используется в uninstall.yml)
+  - name: ansible.posix
+    source: https://galaxy.ansible.com
+    # version: 1.5.0          # можно зафиксировать версию
