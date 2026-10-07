@@ -43,6 +43,17 @@
 
 ## 🚀 Быстрый старт (TL;DR)
 
+> **Одна команда для установки** (запускается **на целевой машине**):
+>
+> ```bash
+> git clone https://github.com/kprklg/ansible-cobbler.git \
+>   && cd ansible-cobbler \
+>   && git checkout v1.1.2 \
+>   && ansible-playbook -i inventories/myhost/hosts.yml playbooks/site.yml
+> ```
+>
+> ⚠ Перед запуском нужно установить системные пакеты (apt + Docker) и создать инвентарь — см. [Шаг 0–3 ниже](#-шаг-0--склонировать-роль-на-целевую-машину) или [PREREQUISITES.md](PREREQUISITES.md).
+
 **Шаг 0 — склонировать роль НА ЦЕЛЕВУЮ МАШИНУ** (туда, где будет крутиться Cobbler):
 
 ```bash
