@@ -21,6 +21,7 @@ PXE_IFACE="{{ cobbler_pxe_iface }}"
 WIFI_IFACE="{{ cobbler_wifi_iface }}"
 PXE_IP="{{ cobbler_pxe_ip }}"
 PXE_NETWORK="{{ cobbler_pxe_network }}"
+MGMT_IP="{{ cobbler_mgmt_ip }}"
 PXE_HOST_IFACE="${PXE_IFACE}-host"
 
 log() { echo "[$(date +%H:%M:%S)] $*" >&2; }
@@ -104,7 +105,7 @@ done
 # 10. Ожидание готовности Web UI (через traefik)
 log "Жду готовность Web UI"
 for i in $(seq 1 60); do
-  HTTP=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1/ 2>/dev/null || echo "000")
+  HTTP=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://${MGMT_IP}/" 2>/dev/null || echo "000")
   if [ "$HTTP" = "200" ] || [ "$HTTP" = "302" ]; then
     log "  ✓ Web UI готов (HTTP $HTTP)"
     break
@@ -118,7 +119,7 @@ for i in $(seq 1 30); do
   HTTP=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 -X POST \
     -H "Content-Type: text/xml" \
     -d '<?xml version="1.0"?><methodCall><methodName>ping</methodName></methodCall>' \
-    http://127.0.0.1/cobbler_api 2>/dev/null || echo "000")
+    "http://${MGMT_IP}/cobbler_api" 2>/dev/null || echo "000")
   if [ "$HTTP" = "200" ]; then
     log "  ✓ XML-RPC работает"
     break

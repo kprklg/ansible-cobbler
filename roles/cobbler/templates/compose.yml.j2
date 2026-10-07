@@ -15,12 +15,26 @@ networks:
 
 volumes:
   cobbler-etc:
+    external: true
+    name: cobbler-stack_cobbler-etc
   cobbler-var-lib:
+    external: true
+    name: cobbler-stack_cobbler-var-lib
   cobbler-webdir:
+    external: true
+    name: cobbler-stack_cobbler-webdir
   cobbler-tftproot:
+    external: true
+    name: cobbler-stack_cobbler-tftproot
   cobbler-dhcp-config:
+    external: true
+    name: cobbler-stack_cobbler-dhcp-config
   cobbler-dns-config:
+    external: true
+    name: cobbler-stack_cobbler-dns-config
   cobbler-dns-zones:
+    external: true
+    name: cobbler-stack_cobbler-dns-zones
 
 
 
@@ -32,14 +46,31 @@ services:
     environment:
       COBBLER_XMLRPC_BIND_ADDRESS: "0.0.0.0"
     volumes:
-      - cobbler-etc:/etc/cobbler:z
-      - cobbler-var-lib:/var/lib/cobbler:z
-      - cobbler-webdir:/srv/www/cobbler:z
-      - cobbler-tftproot:/srv/tftpboot:z
-      - cobbler-dhcp-config:/etc/cobbler-dhcp:z
-      - cobbler-dns-config:/etc/cobbler-dns:z
-      - cobbler-dns-zones:/var/lib/named:z
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - type: volume
+        source: cobbler-etc
+        target: /etc/cobbler
+      - type: volume
+        source: cobbler-var-lib
+        target: /var/lib/cobbler
+      - type: volume
+        source: cobbler-webdir
+        target: /srv/www/cobbler
+      - type: volume
+        source: cobbler-tftproot
+        target: /srv/tftpboot
+      - type: volume
+        source: cobbler-dhcp-config
+        target: /etc/cobbler-dhcp
+      - type: volume
+        source: cobbler-dns-config
+        target: /etc/cobbler-dns
+      - type: volume
+        source: cobbler-dns-zones
+        target: /var/lib/named
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: true
     networks:
       - cobbler
     healthcheck:
@@ -64,8 +95,14 @@ services:
     environment:
       COBBLER_XMLRPC_HOST: "cobblerd"
     volumes:
-      - cobbler-webdir:/srv/www/cobbler:ro,z
-      - cobbler-tftproot:/srv/tftpboot:ro,z
+      - type: volume
+        source: cobbler-webdir
+        target: /srv/www/cobbler
+        read_only: true
+      - type: volume
+        source: cobbler-tftproot
+        target: /srv/tftpboot
+        read_only: true
     networks:
       - cobbler
     depends_on:
@@ -121,7 +158,10 @@ services:
     networks:
       - cobbler
     volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - type: bind
+        source: /var/run/docker.sock
+        target: /var/run/docker.sock
+        read_only: true
     security_opt:
       - no-new-privileges:true
       - label:disable
@@ -146,7 +186,10 @@ services:
     platform: linux/amd64
     image: ghcr.io/cobbler/cobbler-dhcp:latest
     volumes:
-      - cobbler-dhcp-config:/etc/cobbler-dhcp:ro,z
+      - type: volume
+        source: cobbler-dhcp-config
+        target: /etc/cobbler-dhcp
+        read_only: true
     networks:
       cobbler:
         ipv4_address: {{ cobbler_mgmt_network | ipaddr('net') | ipaddr('+' ~ cobbler_dhcp_mgmt_ip_offset ~ '') | ipaddr('address') }}
@@ -163,8 +206,12 @@ services:
     cap_add:
       - NET_ADMIN
     volumes:
-      - cobbler-dns-config:/etc/cobbler-dns:z
-      - cobbler-dns-zones:/var/lib/named:z
+      - type: volume
+        source: cobbler-dns-config
+        target: /etc/cobbler-dns
+      - type: volume
+        source: cobbler-dns-zones
+        target: /var/lib/named
     networks:
       cobbler:
         ipv4_address: {{ cobbler_mgmt_network | ipaddr('net') | ipaddr('+' ~ cobbler_dns_mgmt_ip_offset ~ '') | ipaddr('address') }}

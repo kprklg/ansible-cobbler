@@ -1,5 +1,21 @@
 ---
-# tasks/images.yml — сборка patched-образов
+# tasks/images.yml — сборка patched-образов и загрузка upstream-образов
+
+# Upstream-образы, которые compose использует с `pull: never`,
+# должны быть подтянуты заранее — иначе `docker compose up -d` упадёт
+# с "No such image" (см. PR #v1.1.2).
+- name: "Загрузка upstream-образов (compose использует pull: never)"
+  community.docker.docker_image:
+    name: "{{ item.image }}"
+    tag: "{{ item.tag | default('latest') }}"
+    source: pull
+    pull:
+      policy: always
+  loop:
+    - image: "{{ cobbler_traefik_image }}"
+    - image: "{{ cobbler_dhcp_image }}"
+    - image: "{{ cobbler_tftp_image }}"
+  when: not cobbler_skip_builds
 
 - name: "Сборка cobbler-patched (ядро)"
   community.docker.docker_image:

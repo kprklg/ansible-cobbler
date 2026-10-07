@@ -13,6 +13,7 @@ galaxy_info:
     файлов. Автоматически настраивает macvlan, NAT, systemd-recover.
   company: "rasp01 team"
   license: MIT
+  version: "1.1.2"
   min_ansible_version: "2.14"
   max_ansible_version: "2.20"
 

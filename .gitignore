@@ -1,9 +1,5 @@
-
 .ansible/
 # Ansible
-filter_plugins/
-# IDE
-.idea/
 inventories/local/
 *.log
 push-to-github.sh
@@ -15,3 +11,6 @@ __pycache__/
 .vscode/
 # Вспомогательные файлы
 .venv/
+# filter_plugins/ исключён из gitignore намеренно: в нём лежит
+# обёртка ipaddr.py, без которой шаблоны роли не рендерятся
+# на ansible-core 2.19+ (см. CHANGELOG v1.1.2).

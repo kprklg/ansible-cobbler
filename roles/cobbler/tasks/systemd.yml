@@ -1,11 +1,18 @@
 ---
 # tasks/systemd.yml — установка systemd-сервиса автозапуска
+#
+# NB: include_tasks не пробрасывает теги на inner-tasks, поэтому
+# каждой задаче проставлены tags: [systemd, autostart] явно.
+# Иначе `ansible-playbook --tags systemd` ничего не сделает (см. PR #v1.1.2).
 
 - name: "Генерация cobbler-recover.sh"
   ansible.builtin.template:
     src: cobbler-recover.sh.j2
     dest: "{{ cobbler_workdir }}/cobbler-recover.sh"
     mode: "0755"
+  tags:
+    - systemd
+    - autostart
 
 - name: "Создание systemd-юнита {{ cobbler_systemd_service_name }}.service"
   ansible.builtin.copy:
@@ -26,9 +33,15 @@
 
       [Install]
       WantedBy=multi-user.target
+  tags:
+    - systemd
+    - autostart
 
 - name: "daemon-reload + enable {{ cobbler_systemd_service_name }}"
   ansible.builtin.systemd:
     name: "{{ cobbler_systemd_service_name }}.service"
-    enabled: true
-    daemon_reload: true
+    enabled: yes
+    daemon_reload: yes
+  tags:
+    - systemd
+    - autostart
