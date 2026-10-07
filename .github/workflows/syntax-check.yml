@@ -60,7 +60,7 @@ jobs:
             ${{ runner.os }}-ansible-collections-
 
       - name: Install community.docker collection
-        run: ansible-galaxy collection install community.docker --no-cache-dir
+        run: ansible-galaxy collection install community.docker
 
       - name: Syntax check ${{ matrix.playbook }}
         run: |
