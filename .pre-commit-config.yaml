@@ -1,56 +1,18 @@
----
-# .pre-commit-config.yaml
-# Установка:
-#   pip install pre-commit
-#   pre-commit install
-# После этого yamllint и проверка сообщений коммитов запускаются
-# автоматически перед каждым коммитом.
+# .pre-commit-config.yaml — для локальной разработки.
+# В CI используется .github/workflows/hooks.yml (прямой запуск),
+# потому что pre-commit/action и сам pre-commit делают
+# 'git fetch origin --tags' для обновления хуков, что не работает
+# в CI без credentials.
+#
+# Локально: pip install pre-commit && pre-commit install
 
 repos:
-  - repo: https://github.com/adrienverge/yamllint
-    rev: v1.35.1
+  - repo: local
     hooks:
       - id: yamllint
-        args: ['--strict']
-        files: '.*\.(yaml|yml)$'
-        exclude: |
-          (?x)^(
-              .*/__pycache__/.*|
-              \.git/.*|
-              filter_plugins/.*
-          )$
-
-  - repo: https://github.com/ansible/ansible-lint
-    rev: v6.22.2
-    hooks:
-      - id: ansible-lint
-        files: 'roles/cobbler/.*|playbooks/.*|inventories/.*'
-        # Используем конфиг из репозитория
-        args: ['-c', '.ansible-lint']
-
-  - repo: https://github.com/commitizen-tools/commitizen
-    rev: v3.29.0
-    hooks:
-      - id: commitizen
-        stages: [commit-msg]
-        # Проверяет формат сообщений Conventional Commits
-
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
-    hooks:
-      - id: trailing-whitespace
-        exclude: '\.(patch|diff)$'
-      - id: end-of-file-fixer
-      - id: check-yaml
-        exclude: '^\.github/workflows/.*\.yml$'  # workflow syntax
-      - id: check-added-large-files
-        args: ['--maxkb=1024']
-      - id: check-merge-conflict
-      - id: detect-private-key
-      # Защита от случайного коммита SSH-ключей и токенов
-
-  - repo: https://github.com/shellcheck-py/shellcheck
-    rev: v0.10.0.1
-    hooks:
-      - id: shellcheck
-      # Проверяет bash/sh скрипты
+        name: yamllint
+        entry: yamllint --strict .
+        language: system
+        types: [file]
+        files: \.(yaml|yml)$
+        pass_filenames: false

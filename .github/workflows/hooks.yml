@@ -1,0 +1,129 @@
+---
+name: hooks
+
+# Запускает те же хуки, что и .pre-commit-config.yaml, но без обёртки
+# pre-commit/action. Причина: pre-commit/action (и сам pre-commit
+# в режиме 'run --all-files') вызывает 'git fetch origin --tags' для
+# каждого хука, чтобы обновить его версию. На CI runner'е нет
+# credentials для github.com (default GITHUB_TOKEN имеет только
+# 'Contents: read' и не работает для fetch на внешние репозитории),
+# поэтому каждый запуск падает с:
+#
+#   fatal: could not read Username for 'https://github.com':
+#          No such device or address
+#
+# pre-commit для локальной разработки продолжает работать
+# (.pre-commit-config.yaml сохранён), но в CI мы напрямую
+# запускаем каждую проверку.
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  yamllint:
+    name: yamllint (strict)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install yamllint
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends yamllint
+
+      - name: Run yamllint --strict
+        run: yamllint --strict .
+
+  ansible-lint:
+    name: ansible-lint (production)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python + venv
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install ansible + ansible-lint (pip+venv)
+        run: |
+          # venv изолирует от apt-managed ansible-core, чтобы избежать
+          # конфликта версий с ansible-lint 6.22.2.
+          python -m venv .venv
+          source .venv/bin/activate
+          pip install --quiet --upgrade \
+            "ansible-core>=2.17.0,<2.19.0" \
+            "ansible>=9.8.0" \
+            "ansible-lint==6.22.2"
+          ansible --version | head -2
+          ansible-lint --version
+
+      - name: Install collections
+        run: |
+          source .venv/bin/activate
+          ansible-galaxy collection install -r requirements.yml --force
+
+      - name: Run ansible-lint
+        run: |
+          source .venv/bin/activate
+          ansible-lint roles/cobbler/ playbooks/ inventories/
+
+  shellcheck:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y --no-install-recommends shellcheck
+
+      - name: Find shell scripts
+        id: find-sh
+        run: |
+          # Находим все .sh и bash файлы (исключая .venv и .git)
+          shopt -s globstar nullglob
+          files=()
+          for f in **/*.sh; do
+            [[ "$f" =~ ^\.venv/ ]] && continue
+            [[ "$f" =~ ^\.git/ ]] && continue
+            files+=("$f")
+          done
+          echo "files=${files[@]}" >> "$GITHUB_OUTPUT"
+
+      - name: Run shellcheck
+        if: steps.find-sh.outputs.files != ''
+        run: |
+          IFS=' ' read -ra arr <<< "${{ steps.find-sh.outputs.files }}"
+          shellcheck "${arr[@]}"
+
+  private-key-detector:
+    name: private key scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Scan for private keys
+        run: |
+          # Лёгкая проверка на типичные паттерны приватных ключей.
+          # Заменяет pre-commit hook 'detect-private-key'.
+          if grep -rE 'BEGIN (RSA|DSA|EC|OPENSSH|PGP) PRIVATE KEY' . \
+              --include='*.yml' --include='*.yaml' --include='*.j2' \
+              --include='*.py' --include='*.md' --include='*.json' \
+              --exclude-dir='.git' --exclude-dir='.venv' \
+              --exclude-dir='.ansible' --exclude-dir='node_modules' \
+              --exclude-dir='molecule' 2>/dev/null; then
+            echo "ERROR: found private key pattern in repo"
+            exit 1
+          fi
+          echo "OK: no private keys found"
