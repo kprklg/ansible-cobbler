@@ -2,8 +2,10 @@
 name: pre-commit
 
 # Запускает все pre-commit хуки из .pre-commit-config.yaml в CI.
-# Это гарантирует, что даже те, кто не настроил pre-commit локально,
-# получат feedback при PR.
+# Использует прямой запуск pre-commit через pip вместо готового action,
+# потому что pre-commit/action@v3 пытается делать 'git fetch origin
+# --tags' на каждом репозитории хука, что не работает в CI без
+# credentials (fatal: could not read Username for 'https://github.com').
 
 'on':
   push:
@@ -28,6 +30,18 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: Install pre-commit
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pre-commit
+
+      - name: Cache pre-commit environments
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: pre-commit-
+
       - name: Set up system dependencies
         run: |
           sudo apt-get update
@@ -36,6 +50,10 @@ jobs:
             ansible-core ansible
 
       - name: Run pre-commit
-        uses: pre-commit/action@v3.0.1
-        with:
-          extra_args: --all-files --verbose
+        # SKIP=git отключает попытки 'git fetch' (которые не работают
+        # в CI без credentials). Все остальные хуки (yamllint,
+        # ansible-lint, commitizen, shellcheck) работают через pip
+        # и не требуют git fetch.
+        env:
+          SKIP: git
+        run: pre-commit run --all-files --show-diff-on-failure --color=always
