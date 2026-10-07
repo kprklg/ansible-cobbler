@@ -4,78 +4,144 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [v1.1.2] — runtime-фиксы v1.1.0/1.1.1
+## [v1.1.2] — 2026-10-07
+
+> ⚠ **Этот релиз включает в себя [v1.1.1](#v111--2026-10-05) (т.е. базируется на v1.1.1, а не на v1.1.0).**
+> При обновлении с v1.1.0 → v1.1.2 в один шаг, плейбук идемпотентен — повторный
+> запуск не сломает текущую установку.
+
+### 🚀 Highlights
+
+- **Traefik наконец-то bind `0.0.0.0:80`** — то, что обещал changelog v1.1.0, но
+  в коде так и не было реализовано. Без этого фикса плейбук **всегда** падал
+  по таймауту на health-check (через 3 минуты после `docker compose up -d`).
+- **macvlan auto-up без патч-корда** — раньше установка требовала физически
+  воткнутого Ethernet-кабеля. Теперь systemd-networkd поднимает parent-интерфейс
+  сам через `ConfigureWithoutCarrier=yes`.
+- **`filter_plugins/ipaddr.py` в репо** — без него шаблоны роли не рендерились
+  на ansible-core 2.19+ (баг, который CI не ловил, потому что делал только
+  `--syntax-check` без рендера Jinja).
+- **CLI `cobbler` в patched-образе** — раньше `docker exec ... cobbler import`
+  возвращал `executable file not found`, потому что upstream-образ
+  `cobblerd` поставляет только демон.
+- **Полная переработка доки**: README с prominent «Быстрый старт» (git clone
+  как шаг 0), PREREQUISITES с правильным порядком (clone → apt → docker →
+  ansible-galaxy), v1.1.2 release notes здесь.
 
 ### Fixed
 
-- **`traefik` — bind `0.0.0.0:80` вместо `{{ cobbler_mgmt_ip }}:80:80`.**
-  Changelog v1.1.0 обещал этот фикс, но в коде остался
-  `cobbler_mgmt_ip`. Health-check по `http://127.0.0.1/` всегда падал
-  с `Connection refused` через 3 минуты таймаута. Теперь traefik
-  слушает на всех интерфейсах, health-check ходит на
-  `http://{{ cobbler_mgmt_ip }}/`.
+#### `fix(stack)` — Traefik bind `0.0.0.0:80` и health-check URL
 
-- **`macvlan` — `ConfigureWithoutCarrier=yes` для parent-интерфейса.**
-  Без патч-корда systemd-networkd не поднимал родительский интерфейс
-  (например, `ens19`), и Docker не мог создать macvlan → плейбук
-  падал на `failed to enable ens19.10 the macvlan parent link network
-  is down`. Теперь PXE-интерфейс поднимается даже без линка.
+Changelog v1.1.0 обещал этот фикс, но в коде остался `{{ cobbler_mgmt_ip }}`.
+Health-check по `http://127.0.0.1/` всегда падал с `Connection refused` через
+3 минуты таймаута. Теперь:
+- `ports: 0.0.0.0:80:80` (а не `{{ cobbler_mgmt_ip }}:80:80`)
+- health-check в `tasks/stack.yml` ходит на `http://{{ cobbler_mgmt_ip }}/`
+- health-check в `templates/cobbler-recover.sh.j2` использует `MGMT_IP`
 
-- **`docker pull` upstream-образов перед запуском стека.**
-  `docker compose up -d` падал с `No such image: traefik:v3.6`,
-  потому что в compose стоит `pull: never`. Добавлена задача в
-  `tasks/images.yml`, которая явно подтягивает `traefik`,
-  `cobbler-tftp`, `cobbler-dhcp`.
+**Затронутые файлы:** `roles/cobbler/templates/compose.yml.j2`,
+`roles/cobbler/templates/cobbler-recover.sh.j2`, `roles/cobbler/tasks/stack.yml`.
 
-- **`systemd` — теги `systemd, autostart` на inner-tasks.**
-  `include_tasks` не пробрасывает теги на дочерние tasks, а у самих
-  задач в `systemd.yml` тегов не было. `ansible-playbook --tags systemd`
-  ничего не делал. Теперь каждая задача помечена явно.
+#### `fix(macvlan)` — `ConfigureWithoutCarrier=yes` для parent-интерфейса
 
-- **`compose` — `external: true` для всех volumes + long-form синтаксис.**
-  Docker 29 ругался двумя warning'ами:
-  - `volume ... already exists but was not created by Docker Compose`
-    (volumes создаются вручную в `tasks/volumes.yml`, но в compose
-    не были помечены `external: true`)
-  - `mount of type volume should not define bind option`
-    (short-form `name:path:z` для volume-монта Docker 29 раскрывает
-    в `bind: { selinux: z }`, что невалидно для volume-типа)
-  Теперь volumes помечены `external: true` и записаны в long-form
-  (`type: volume` / `type: bind`).
+Без патч-корда systemd-networkd не поднимал родительский интерфейс
+(например, `ens19`), и Docker не мог создать macvlan → плейбук падал на
+`failed to enable ens19.10 the macvlan parent link network is down`.
+Теперь PXE-интерфейс поднимается даже без линка.
 
-- **`Dockerfile.cobbler` — CLI-обёртка `cobbler` в patched-образе.**
-  Upstream `ghcr.io/cobbler/cobblerd` поставляет только демон `cobblerd`,
-  без CLI. README советует `docker exec ... cobbler import ...`, но
-  команда не находилась. Добавлен wrapper `/usr/local/bin/cobbler`
-  (`python3 -m cobbler.cli`).
+**Затронутые файлы:** `roles/cobbler/tasks/macvlan.yml`.
 
-- **`filter_plugins/ipaddr.py` — обёртка `ansible.utils.ipaddr`.**
-  В ansible-core 2.19+ объявление `collections: [ansible.utils]` в
-  плейбуке **не** делает короткое имя `ipaddr` доступным в шаблонах
-  Jinja. Changelog v1.1.0 писал «подключена папка filter_plugins», но
-  саму папку забыли создать. В v1.1.2 она создана и содержит
-  реэкспорт `ansible.utils.ipaddr`.
+#### `fix(images)` — `docker pull` upstream-образов перед запуском стека
 
-- **`cobbler-recover.sh` — health-check URL через `MGMT_IP`.**
-  В `templates/cobbler-recover.sh.j2` health-check тоже смотрел
-  `http://127.0.0.1/` (что не работает с traefik на `0.0.0.0:80`,
-  если хост слушает только на management IP). Теперь использует
-  `cobbler_mgmt_ip` из инвентаря.
+`docker compose up -d` падал с `No such image: traefik:v3.6`, потому что в
+compose стоит `pull: never`. Добавлена задача в `tasks/images.yml`, которая
+явно подтягивает `traefik`, `cobbler-tftp`, `cobbler-dhcp`.
+
+**Затронутые файлы:** `roles/cobbler/tasks/images.yml`.
+
+#### `fix(systemd)` — теги `systemd, autostart` на inner-tasks
+
+`include_tasks` не пробрасывает теги на дочерние tasks, а у самих задач в
+`systemd.yml` тегов не было. `ansible-playbook --tags systemd` ничего не
+делал. Теперь каждая задача помечена явно.
+
+**Затронутые файлы:** `roles/cobbler/tasks/systemd.yml`.
+
+#### `fix(compose)` — `external: true` для volumes + long-form синтаксис
+
+Docker 29 ругался двумя warning'ами:
+- `volume ... already exists but was not created by Docker Compose`
+  (volumes создаются вручную в `tasks/volumes.yml`, но в compose не были
+  помечены `external: true`)
+- `mount of type volume should not define bind option` (short-form
+  `name:path:z` для volume-монта Docker 29 раскрывает в
+  `bind: { selinux: z }`, что невалидно для volume-типа)
+
+Теперь volumes помечены `external: true` и записаны в long-form
+(`type: volume` / `type: bind`).
+
+**Затронутые файлы:** `roles/cobbler/templates/compose.yml.j2`.
+
+#### `fix(dockerfile)` — CLI-обёртка `cobbler` в patched-образе
+
+Upstream `ghcr.io/cobbler/cobblerd` поставляет только демон `cobblerd`,
+без CLI. README советует `docker exec ... cobbler import ...`, но команда
+не находилась. Добавлен wrapper `/usr/local/bin/cobbler`
+(`python3 -m cobbler.cli`).
+
+**Затронутые файлы:** `roles/cobbler/templates/Dockerfile.cobbler.j2`.
+
+#### `fix(filter)` — `filter_plugins/ipaddr.py` (обёртка `ansible.utils.ipaddr`)
+
+В ansible-core 2.19+ объявление `collections: [ansible.utils]` в плейбуке
+**не** делает короткое имя `ipaddr` доступным в шаблонах Jinja. Changelog
+v1.1.0 писал «подключена папка filter_plugins», но саму папку забыли
+создать. В v1.1.2 она создана и содержит реэкспорт `ansible.utils.ipaddr`.
+
+**Затронутые файлы:** `filter_plugins/ipaddr.py` (новый), `.gitignore`.
+
+#### `fix(cobbler-recover)` — health-check URL через `MGMT_IP`
+
+В `templates/cobbler-recover.sh.j2` health-check тоже смотрел
+`http://127.0.0.1/` (что не работает с traefik на `0.0.0.0:80`, если хост
+слушает только на management IP). Теперь использует `cobbler_mgmt_ip` из
+инвентаря.
+
+**Затронутые файлы:** `roles/cobbler/templates/cobbler-recover.sh.j2`.
 
 ### Changed
 
-- **README.md** — добавлена секция «Быстрый старт (TL;DR)» с
-  `git clone` как шагом 0. Явное указание: клонировать роль нужно
-  на целевую машину, а не на отдельный controller.
-
-- **PREREQUISITES.md** — в «Минимальной копипасте» `git clone`
-  переставлен на первое место (раньше был после установки apt, что
-  логически некорректно — нельзя ставить коллекции из requirements.yml
-  без клонирования).
-
+- **README.md** — добавлена секция «🚀 Быстрый старт (TL;DR)» с `git clone`
+  как **шагом 0**. Явное указание: клонировать роль нужно **на целевую
+  машину**, а не на отдельный controller (используется
+  `ansible_connection: local`).
+- **PREREQUISITES.md** — в «Минимальной копипасте» `git clone` переставлен
+  на первое место (раньше был после установки apt, что логически
+  некорректно — `ansible-galaxy collection install -r requirements.yml`
+  невозможен без клонирования).
 - **`.gitignore`** — убран `filter_plugins/` (там теперь живой файл).
-
 - **meta/main.yml** — добавлено `version: "1.1.2"`.
+
+### Migration notes
+
+При обновлении с v1.1.0 или v1.1.1:
+
+```bash
+cd ~/ansible-cobbler
+git fetch
+git checkout v1.1.2
+ansible-playbook -i inventories/myhost/hosts.yml playbooks/site.yml
+```
+
+Плейбук идемпотентен. Все наши фиксы не ломают текущую установку
+(в частности, перенос `ports` с `{{ cobbler_mgmt_ip }}:80` на `0.0.0.0:80`
+сделает traefik доступным на всех интерфейсах — если у вас был файрвол
+только на mgmt IP, проверьте правила).
+
+### Contributors
+
+- MiniMax-M3 (rasp01 team) — maintainer
+- goose — v1.1.2 (runtime-фиксы + docs overhaul)
 
 ## [v1.1.1] — 2026-10-05
 

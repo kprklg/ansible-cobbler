@@ -373,53 +373,17 @@ ansible-playbook -i inventories/myhost/hosts.yml playbooks/site.yml
 
 ---
 
-## Changelog
+## 📝 Changelog
 
-### v1.1.2 — runtime-фиксы v1.1.0/v1.1.1
+Полная история релизов — в **[CHANGELOG.md](CHANGELOG.md)** и в [**GitHub Releases**](../../releases).
+Дублировать changelog в README — плохой тон, поэтому здесь только самое важное:
 
-9 фиксов, накопившихся в v1.1.0 (многие были заявлены, но не реализованы):
-
-- `fix(stack)`: Traefik bind `0.0.0.0:80` (наконец-то реализован обещанный)
-- `fix(stack)`: health-check URL через `{{ cobbler_mgmt_ip }}` (а не `127.0.0.1`)
-- `fix(macvlan)`: `ConfigureWithoutCarrier=yes` для parent-интерфейса
-- `fix(images)`: `docker pull` upstream-образов (traefik/cobbler-tftp/cobbler-dhcp)
-- `fix(systemd)`: теги `systemd, autostart` на inner-tasks (`--tags systemd` теперь работает)
-- `fix(compose)`: `external: true` для volumes + long-form синтаксис (без warning'ов Docker 29)
-- `fix(dockerfile)`: CLI-обёртка `cobbler` в patched-образе (`docker exec ... cobbler import` работает)
-- `fix(filter)`: `filter_plugins/ipaddr.py` для ansible-core 2.19+
-- `fix(cobbler-recover)`: health-check URL через `MGMT_IP`
-- `docs`: README «Быстрый старт», PREREQUISITES — `git clone` как шаг 0, CHANGELOG v1.1.2
-
-### v1.1.1 — patch-remote под Cobbler 4
-
-- `fix(patch-remote)`: handle ALL cobbler 3 collection names + accept *args
-- `fix(patch-remote)`: use self.api.get_items() for Cobbler 4
-- `test`: Molecule scenarios (x86_64 + aarch64)
-
-### v1.1.0 — aarch64 / Ansible 2.19 / Cobbler 4 compatibility
-
-- `fix(preflight)`: убраны Jinja-разделители в условии `assert`
-- `fix(macvlan)`: переименование `eth0-host` → `eth0.10` (требование Docker 25+ к именам VLAN)
-- `fix(stack)`: миграция на `ipam_config` (community.docker 4.x)
-- `fix(stack)`: `pull: no` / `build: no` → `pull: never` / `build: never`
-- `fix(stack)`: исправлена CIDR-нотация для iprange
-- `fix(stack)`: Traefik bind `0.0.0.0:80` (для local-приложений и health-check)
-- `fix(compose)`: добавлен отсутствующий `templates/named.conf.j2`
-- `fix(compose)`: переменные `mgmt_ip` / `pxe_network` → `cobbler_mgmt_ip` / `cobbler_pxe_network`
-- `fix(compose)`: `ipaddr('+N')` → `| ipaddr('address')` для IPv4 без маски
-- `fix(volumes)`: Go-template `{{.Name}}` экранирован в `{% raw %}`
-- `fix(patch-remote)`: учтена многострочная сигнатура `get_valid_distro_boot_loaders` в Cobbler 4
-- `fix(deps)`: убрана принудительная установка `docker.io` поверх `docker-ce`
-- `fix(volumes)`: генерация `users.digest` через `hashlib.sha3_512` (Cobbler 4 по умолчанию)
-- `fix(cobbler-recover)`: префикс `cobbler_` у переменных шаблона
-- `chore(playbook)`: объявлена коллекция `ansible.utils` для фильтра `ipaddr`
-- `chore(ansible.cfg)`: подключена папка `filter_plugins`
-
-См. подробности: [v1.1.0 release](../../releases/tag/v1.1.0) или `git log b756cd5..v1.1.0`.
-
-### v1.0.0
-
-Начальная версия. Работала только на x86_64 с Docker 24+ и старыми версиями community.docker.
+| Версия | Что | Когда |
+|---|---|---|
+| **v1.1.2** | 9 runtime-фиксов (traefik bind, macvlan, docker pull, systemd, …) + docs overhaul | 2026-10-07 |
+| v1.1.1 | `patch-remote.py` под Cobbler 4 (legacy collection names) | 2026-10-05 |
+| v1.1.0 | aarch64 / Ansible 2.19 / Cobbler 4 compatibility | 2026-10-02 |
+| v1.0.0 | Начальная версия (только x86_64) | — |
 
 ---
 
